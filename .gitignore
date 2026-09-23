@@ -1,0 +1,59 @@
+node_modules/
+dist/
+build/
+.next/
+.nuxt/
+coverage/
+.turbo/
+.tsbuildinfo
+*.tsbuildinfo
+
+# Prisma migrations ARE committed (production uses prisma migrate deploy)
+
+# Environment — never commit
+.env
+.env.*
+!.env.example
+apps/**/.env
+apps/**/.env.*
+packages/**/.env
+packages/**/.env.*
+
+# Secrets and credentials
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*
+secrets*
+
+# Logs
+*.log
+logs/
+
+# Backup artifacts
+*.bak
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+prisma/migrations/dev-tracker
+
+# Docker volumes / runtime data
+pgdata/
+redis-data/
+*.sql.gz
+!backups/.gitkeep
+
+# Temporary / build artifacts
+.vercel
+.DS_Store
+Thumbs.db
+*.zip
+*.tar.gz
+.tmp/
+temp/
+
+# Local backups
+backups/

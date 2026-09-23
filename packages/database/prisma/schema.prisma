@@ -1,0 +1,363 @@
+// AWIK NET — Internet Service Provider
+// Production-Ready Prisma Schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── ENUMS ──────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  EXPIRING_SOON
+  EXPIRED
+  SUSPENDED
+}
+
+enum StockMovementType {
+  PURCHASE
+  SALE
+  RETURN
+  ADJUSTMENT
+  DAMAGED
+  LOST
+  CORRECTION
+}
+
+enum WhatsAppReminderType {
+  DAYS_5
+  DAYS_3
+  DAYS_1
+  EXPIRY_DAY
+}
+
+// ─── USER MANAGEMENT ────────────────────────────────────
+
+model User {
+  id           String     @id @default(uuid())
+  email        String?    @unique
+  phone        String     @unique
+  firstName    String
+  lastName     String
+  passwordHash String
+  role         UserRole   @default(STAFF)
+  status       UserStatus @default(ACTIVE)
+  lastLoginAt  DateTime?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  deletedAt    DateTime?
+
+  auditLogs     AuditLog[]
+  stockMovements StockMovement[]
+  sales         Sale[]
+
+  @@index([phone])
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}
+
+// ─── CUSTOMER MANAGEMENT ────────────────────────────────
+
+model Customer {
+  id             String    @id @default(uuid())
+  phone          String    @unique
+  email          String?
+  whatsappNumber String?
+  firstName      String
+  lastName       String
+  address        String?
+  area           String?
+  city           String?
+  location       String?
+  latitude       Float?
+  longitude      Float?
+  notes          String?
+  status         String    @default("active")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  deletedAt      DateTime?
+
+  subscriptions     Subscription[]
+  sales             Sale[]
+  whatsappReminders WhatsAppReminder[]
+  whatsappMessages  WhatsAppMessage[]
+
+  @@index([phone])
+  @@index([status])
+  @@index([city])
+  @@map("customers")
+}
+
+// ─── INTERNET PLANS ─────────────────────────────────────
+
+model Plan {
+  id           String   @id @default(uuid())
+  name         String
+  description  String?
+  speed        String // e.g., "10 Mbps", "50 Mbps"
+  durationDays Int
+  price        Decimal
+  currency     String   @default("USD")
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  subscriptions Subscription[]
+
+  @@index([isActive])
+  @@map("plans")
+}
+
+// ─── SUBSCRIPTIONS ──────────────────────────────────────
+
+model Subscription {
+  id              String             @id @default(uuid())
+  customerId      String
+  planId          String
+  startDate       DateTime
+  expiryDate      DateTime
+  status          SubscriptionStatus @default(ACTIVE)
+  paymentStatus   String             @default("paid")
+  notes           String?
+  lastRenewalDate DateTime?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  deletedAt       DateTime?
+
+  customer  Customer           @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  plan      Plan               @relation(fields: [planId], references: [id])
+  reminders WhatsAppReminder[]
+  renewals  SubscriptionRenewal[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([expiryDate])
+  @@map("subscriptions")
+}
+
+model SubscriptionRenewal {
+  id                String       @id @default(uuid())
+  subscriptionId    String
+  userId            String?
+  previousPlanId    String
+  newPlanId         String
+  previousExpiryDate DateTime
+  newExpiryDate     DateTime
+  durationDays      Int
+  createdAt         DateTime     @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([subscriptionId])
+  @@index([createdAt])
+  @@map("subscription_renewals")
+}
+
+// ─── WHATSAPP REMINDERS ─────────────────────────────────
+
+model WhatsAppReminder {
+  id             String               @id @default(uuid())
+  subscriptionId String
+  customerId     String
+  reminderType   WhatsAppReminderType
+  scheduledFor   DateTime
+  sentAt         DateTime?
+  status         String               @default("pending") // pending, sent, failed, skipped
+  errorMessage   String?
+  createdAt      DateTime             @default(now())
+
+  subscription Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  customer     Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, reminderType])
+  @@index([customerId])
+  @@index([status])
+  @@index([scheduledFor])
+  @@map("whatsapp_reminders")
+}
+
+// ─── WHATSAPP MESSAGE LOG ───────────────────────────────
+
+model WhatsAppMessage {
+  id                String    @id @default(uuid())
+  recipientPhone    String
+  customerId        String?
+  messageBody       String
+  status            String    @default("pending") // pending, sent, failed, delivered, read
+  externalMessageId String?
+  errorMessage      String?
+  retryCount        Int       @default(0)
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  readAt            DateTime?
+  scheduledFor      DateTime?
+  referenceId       String?
+  templateType      String?
+  createdAt         DateTime  @default(now())
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+
+  @@index([recipientPhone])
+  @@index([status])
+  @@index([sentAt])
+  @@map("whatsapp_messages")
+}
+
+// ─── INVENTORY SYSTEM ───────────────────────────────────
+
+model InventoryCategory {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  createdAt   DateTime  @default(now())
+
+  products Product[]
+
+  @@map("inventory_categories")
+}
+
+model Product {
+  id            String             @id @default(uuid())
+  name          String
+  sku           String             @unique
+  barcode       String?            @unique
+  categoryId    String
+  description   String?
+  imageUrl      String?
+  purchasePrice Decimal
+  sellingPrice  Decimal
+  currency      String             @default("USD")
+  currentStock  Int                @default(0)
+  minStock      Int                @default(0)
+  unit          String             @default("piece")
+  isActive      Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  deletedAt     DateTime?
+
+  category       InventoryCategory @relation(fields: [categoryId], references: [id])
+  stockMovements StockMovement[]
+  saleItems      SaleItem[]
+
+  @@index([sku])
+  @@index([barcode])
+  @@index([categoryId])
+  @@index([isActive])
+  @@map("products")
+}
+
+model StockMovement {
+  id            String            @id @default(uuid())
+  productId     String
+  userId        String?
+  movementType  StockMovementType
+  quantity      Int
+  previousStock Int
+  newStock      Int
+  reference     String?
+  notes         String?
+  createdAt     DateTime          @default(now())
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id])
+
+  @@index([productId])
+  @@index([movementType])
+  @@index([createdAt])
+  @@map("stock_movements")
+}
+
+// ─── SALES SYSTEM ───────────────────────────────────────
+
+model Sale {
+  id            String   @id @default(uuid())
+  saleNumber    String   @unique
+  customerId    String?
+  userId        String?
+  totalAmount   Decimal
+  currency      String   @default("USD")
+  paymentMethod String
+  status        String   @default("COMPLETED") // COMPLETED, REFUNDED, CANCELLED
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  customer Customer? @relation(fields: [customerId], references: [id])
+  user     User?     @relation(fields: [userId], references: [id])
+  items    SaleItem[]
+
+  @@index([customerId])
+  @@index([createdAt])
+  @@map("sales")
+}
+
+model SaleItem {
+  id        String   @id @default(uuid())
+  saleId    String
+  productId String
+  quantity  Int
+  unitPrice Decimal
+  totalPrice Decimal
+  createdAt DateTime @default(now())
+
+  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+  @@map("sale_items")
+}
+
+// ─── SETTINGS ────────────────────────────────────────────
+
+model CompanySetting {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("company_settings")
+}
+
+// ─── AUDIT LOG ───────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String // CREATE, UPDATE, DELETE, LOGIN, SALE, SUBSCRIPTION_RENEWAL, etc.
+  entity    String // Customer, Product, Sale, Subscription, etc.
+  entityId  String?
+  oldValues String? // JSON
+  newValues String? // JSON
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([action])
+  @@index([entity])
+  @@index([createdAt])
+  @@map("audit_logs")
+}

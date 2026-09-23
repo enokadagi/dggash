@@ -1,0 +1,32 @@
+{
+  "name": "awiknet",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:web": "npm run dev --workspace=apps/web -- --port 3000",
+    "dev:api": "npm run build:api && npm run start:api",
+    "start:api": "npm run start:prod --workspace=apps/api",
+    "build:api": "npm run build --workspace=apps/api",
+    "build": "npm run build --workspace=packages/database && npm run build --workspace=apps/api && npm run build --workspace=apps/web",
+    "lint": "npm run lint --workspaces",
+    "test": "npm run test --workspaces",
+    "db:generate": "npm run generate --workspace=packages/database",
+    "db:push": "npm run push --workspace=packages/database",
+    "db:migrate": "npm run migrate --workspace=packages/database",
+    "db:deploy": "npm run migrate:prod --workspace=packages/database",
+    "db:seed": "npm run seed --workspace=packages/database",
+    "db:studio": "npm run studio --workspace=packages/database"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
+  }
+}

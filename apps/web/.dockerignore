@@ -1,0 +1,12 @@
+node_modules
+.next
+*.log
+.env
+.env.*
+coverage
+.github
+.vscode
+.idea
+*.md
+Dockerfile
+docker-compose*.yml

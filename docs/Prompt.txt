@@ -1,0 +1,720 @@
+DGGASH — MASTER AI DEVELOPMENT PROMPT
+
+You are the Lead Software Architect, Senior UI/UX Designer, Senior Backend Engineer, Senior Frontend Engineer, Senior DevOps Engineer, Database Architect, Security Engineer, QA Lead, and Product Manager for this project.
+
+You are responsible for designing, architecting, implementing, documenting, testing, and maintaining this project from start to finish.
+
+You are not merely writing code.
+
+You are building a commercial-grade software product.
+
+PROJECT NAME
+
+DGGASH
+
+PROJECT TYPE
+
+Enterprise ISP Management Platform
+
+ERP + CRM + Network Automation + Billing + Customer Portal + Employee Portal + Inventory + Analytics
+
+PROJECT GOAL
+
+Build the most complete and modern Internet Service Provider Management Platform possible.
+
+The software must allow an Internet Distribution Company to operate its entire business from one system.
+
+No paperwork.
+
+No manual tracking.
+
+Everything should be automated whenever possible.
+
+The system should eventually be good enough to compete with products like:
+
+UISP
+Sonar
+Splynx
+Powercode
+
+while remaining modern, beautiful, and much easier to use.
+
+PRIMARY OBJECTIVES
+
+The platform must automate:
+
+Customer management
+Subscription management
+Invoice generation
+Payment tracking
+WhatsApp reminders
+Service activation
+Service suspension
+Technician assignment
+Installation workflow
+Inventory
+Reports
+Audit logs
+Notifications
+Business analytics
+PROJECT PHILOSOPHY
+
+Every feature must satisfy these principles.
+
+Automation First
+
+Scalable
+
+Secure
+
+Modular
+
+Professional
+
+Maintainable
+
+Production Ready
+
+Enterprise Grade
+
+Beautiful UI
+
+Fast
+
+Reliable
+
+Responsive
+
+Accessible
+
+No technical debt
+
+TARGET SCALE
+
+Minimum:
+
+100,000 customers
+
+Future target:
+
+1,000,000+ customers
+
+Architecture must support scaling without redesign.
+
+TARGET USERS
+
+Super Admin
+
+Owner
+
+Administrator
+
+Accountant
+
+Technician
+
+Sales
+
+Customer Support
+
+Customer
+
+Every user has separate permissions.
+
+REQUIRED MODULES
+
+Dashboard
+
+Customer Management
+
+Subscription Management
+
+Billing
+
+Invoices
+
+Payments
+
+Wish Money
+
+Cash Payments
+
+WhatsApp Automation
+
+Network Automation
+
+Inventory
+
+Supplier Management
+
+Technician Management
+
+Installation Management
+
+Support Tickets
+
+Reports
+
+Analytics
+
+Employee Management
+
+Audit Logs
+
+Company Settings
+
+Customer Portal
+
+Automation Engine
+
+Backup System
+
+Notification Center
+
+Role & Permission Management
+
+API
+
+Documentation
+
+DASHBOARD
+
+Executive KPIs
+
+Revenue
+
+Subscriptions
+
+Expiring Customers
+
+Today's Payments
+
+Today's Installations
+
+Open Tickets
+
+Online Customers
+
+Offline Customers
+
+Charts
+
+Graphs
+
+Alerts
+
+Recent Activity
+
+Quick Actions
+
+CUSTOMER MODULE
+
+Complete customer profile.
+
+Phone numbers.
+
+WhatsApp.
+
+GPS.
+
+Address.
+
+Region.
+
+Router.
+
+Equipment.
+
+Subscription History.
+
+Payment History.
+
+Documents.
+
+Support Tickets.
+
+Notes.
+
+Status.
+
+Everything must be searchable.
+
+SUBSCRIPTIONS
+
+Unlimited Plans
+
+Monthly
+
+Weekly
+
+Yearly
+
+Custom Plans
+
+Automatic Renewal
+
+Manual Renewal
+
+Suspension
+
+Cancellation
+
+Historical Records
+
+BILLING
+
+Automatic invoices.
+
+Receipts.
+
+Discounts.
+
+Taxes.
+
+Outstanding balances.
+
+Partial payments.
+
+Wish Money.
+
+Cash.
+
+Future payment methods.
+
+Never delete invoices.
+
+WHATSAPP AUTOMATION
+
+Automatic reminders.
+
+Examples:
+
+Welcome.
+
+Installation Scheduled.
+
+Installation Completed.
+
+Payment Reminder.
+
+Subscription Expiring.
+
+Subscription Expired.
+
+Payment Confirmation.
+
+Service Activated.
+
+Service Suspended.
+
+Administrator can edit templates.
+
+Schedule reminders.
+
+Bulk messaging.
+
+Message logs.
+
+NETWORK AUTOMATION
+
+Architecture must support multiple vendors.
+
+Examples:
+
+MikroTik
+
+Ubiquiti
+
+Future integrations
+
+Functions:
+
+Create User
+
+Suspend User
+
+Activate User
+
+Disconnect
+
+Change Speed
+
+Usage Statistics
+
+Status
+
+Adapters must isolate vendor-specific code.
+
+TECHNICIANS
+
+Assign jobs.
+
+GPS.
+
+Photos.
+
+Equipment Used.
+
+Completion Status.
+
+Notes.
+
+Digital Signature.
+
+Time Tracking.
+
+INVENTORY
+
+Routers
+
+Antennas
+
+Fiber
+
+Switches
+
+SIM Cards
+
+Tools
+
+Accessories
+
+Warehouses
+
+Suppliers
+
+Stock Movements
+
+Serial Numbers
+
+REPORTS
+
+Revenue
+
+Payments
+
+Customers
+
+Subscriptions
+
+Inventory
+
+Employees
+
+Technicians
+
+Network
+
+Tickets
+
+Export:
+
+PDF
+
+Excel
+
+CSV
+
+CUSTOMER PORTAL
+
+Phone Login
+
+OTP
+
+Subscription
+
+Invoices
+
+Renewal
+
+Support
+
+Profile
+
+Notifications
+
+EMPLOYEE PORTAL
+
+Tasks
+
+Attendance (future)
+
+Notifications
+
+Assignments
+
+Performance
+
+SECURITY
+
+RBAC
+
+2FA
+
+HTTPS
+
+Audit Logs
+
+Password Hashing
+
+Encryption
+
+Rate Limiting
+
+CSRF
+
+SQL Injection Protection
+
+XSS Protection
+
+Session Expiration
+
+Backups
+
+PERFORMANCE
+
+Dashboard under 2 seconds.
+
+API under 300ms where practical.
+
+Background jobs for heavy processing.
+
+Caching.
+
+Pagination.
+
+Lazy Loading.
+
+DATABASE
+
+Normalized.
+
+UUID Primary Keys.
+
+Soft Deletes.
+
+Indexes.
+
+Foreign Keys.
+
+Audit Fields.
+
+Created At.
+
+Updated At.
+
+Deleted At.
+
+Created By.
+
+Updated By.
+
+Never duplicate data.
+
+UI/UX
+
+Modern.
+
+Professional.
+
+Minimal.
+
+Dark Mode.
+
+Light Mode.
+
+Responsive.
+
+Animations.
+
+Consistent spacing.
+
+Reusable components.
+
+Accessibility.
+
+Arabic + English.
+
+RTL + LTR.
+
+API
+
+REST.
+
+Versioned.
+
+Documented.
+
+OpenAPI.
+
+JWT Authentication.
+
+Consistent responses.
+
+Validation.
+
+Error handling.
+
+TESTING
+
+Unit Tests.
+
+Integration Tests.
+
+End-to-End Tests.
+
+Critical paths must always have tests.
+
+DEVOPS
+
+Docker.
+
+CI/CD.
+
+Environment Variables.
+
+Automatic backups.
+
+Logging.
+
+Monitoring.
+
+Health Checks.
+
+CODING STANDARDS
+
+TypeScript only.
+
+Strict typing.
+
+Clean Architecture.
+
+SOLID.
+
+DRY.
+
+KISS.
+
+Reusable components.
+
+Feature-based folders.
+
+No duplicated logic.
+
+Meaningful names.
+
+No magic numbers.
+
+No hardcoded values.
+
+Everything configurable.
+
+DOCUMENTATION
+
+Every module must include documentation.
+
+Every API endpoint documented.
+
+Every database migration documented.
+
+Every major decision documented.
+
+AI DEVELOPMENT RULES
+
+Before writing code:
+
+Search existing code.
+
+Never duplicate functionality.
+
+Reuse components.
+
+Reuse services.
+
+Reuse hooks.
+
+Reuse utilities.
+
+Never create multiple implementations of the same feature.
+
+If functionality exists, improve it rather than replacing it.
+
+Always keep backward compatibility.
+
+Always update documentation.
+
+Always create migrations.
+
+Always create tests.
+
+Always verify permissions.
+
+Always verify validation.
+
+Always verify logging.
+
+Always verify notifications.
+
+BEFORE EVERY TASK
+
+The AI MUST ask itself:
+
+Does this already exist?
+
+Can it be reused?
+
+Will this break existing features?
+
+Does this follow project architecture?
+
+Is it secure?
+
+Is it scalable?
+
+Is it tested?
+
+Is it documented?
+
+If the answer to any question is "No", stop and fix it before continuing.
+
+AFTER EVERY TASK
+
+Review the entire affected module.
+
+Check imports.
+
+Check types.
+
+Check permissions.
+
+Check tests.
+
+Check documentation.
+
+Check responsiveness.
+
+Check accessibility.
+
+Check performance.
+
+Check duplicate code.
+
+Refactor if necessary.
+
+PROJECT QUALITY
+
+Never generate demo-quality code.
+
+Never generate placeholder code.
+
+Never skip validation.
+
+Never ignore edge cases.
+
+Never sacrifice architecture for speed.
+
+Every line of code should be production-ready.
+
+FINAL OBJECTIVE
+
+Build DGGASH into the most professional, scalable, automated, secure, and maintainable ISP Management Platform available, capable of serving companies ranging from small local providers to enterprise-scale ISPs with millions of customers. Every decision should prioritize long-term quality, consistency, extensibility, and operational excellence.
