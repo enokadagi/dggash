@@ -53,11 +53,15 @@ log "=== Starting deployment ==="
 
 cd "$PROJECT_DIR"
 
-log "Step 1: Pulling latest code..."
-git fetch origin main
-git reset --hard origin/main
-git pull origin main >> "$LOG_FILE" 2>&1
-log "Code updated to $(git rev-parse --short HEAD)"
+log "Step 1: Updating code..."
+if git rev-parse --git-dir > /dev/null 2>&1 && git remote get-url origin > /dev/null 2>&1; then
+    git fetch origin main
+    git reset --hard origin/main
+    git pull origin main >> "$LOG_FILE" 2>&1
+    log "Code updated to $(git rev-parse --short HEAD)"
+else
+    log "Skipping git update (no git remote present; deploying the supplied bundle)."
+fi
 
 log "Step 2: Building Docker images..."
 docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache >> "$LOG_FILE" 2>&1
@@ -65,7 +69,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml build --no-cache
 log "Step 3: Running database migrations..."
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d postgres redis
 sleep 10
-docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm api npx prisma migrate deploy >> "$LOG_FILE" 2>&1
+docker compose -f docker-compose.yml -f docker-compose.prod.yml run --rm api npx prisma migrate deploy --schema=packages/database/prisma/schema.prisma >> "$LOG_FILE" 2>&1
 
 log "Step 4: Restarting containers..."
 docker compose -f docker-compose.yml -f docker-compose.prod.yml down >> "$LOG_FILE" 2>&1
