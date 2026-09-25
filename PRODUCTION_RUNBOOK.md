@@ -165,21 +165,83 @@ sudo certbot certonly --nginx -d yourdomain.com -d www.yourdomain.com
 
 ---
 
-## 7. Enable WhatsApp (optional)
+## 7. Enable WhatsApp — connect your business number (Meta setup)
 
-Set these in `.env.production`, then restart the api:
+Two things drive WhatsApp here: the **Cloud API** (sends via your business
+number) and the **webhook** (delivery status marks messages sent/delivered/read).
 
-```bash
-WHATSAPP_API_URL="https://graph.facebook.com/v18.0"
-WHATSAPP_PHONE_NUMBER_ID="<your_id>"
-WHATSAPP_ACCESS_TOKEN="<token>"
-WHATSAPP_BUSINESS_ACCOUNT_ID="<acct>"
-WHATSAPP_APP_SECRET="<app secret>"
-docker compose -f docker-compose.yml -f docker-compose.prod.yml restart api
-```
+### How sending works in AWIK NET
 
-Until creds are set, messages are queued as `pending` and reminders are
-scheduled but not delivered.
+1. You send from the app (composer, template button, or an expiry reminder).
+2. A message row is created (`pending`), then the API POSTs to
+   `https://graph.facebook.com/<version>/<PHONE_NUMBER_ID>/messages`
+   with your bearer token.
+3. If the API isn't configured yet, rows stay `pending` and the 5‑minute
+   scheduler retries up to 3 times once creds are added.
+
+> **Important constraint (verified in code):** manual composer messages are
+> sent as free-form `type: text`. Meta only allows these **inside the 24‑hour
+> customer-service window** (after the customer messages you). For proactive
+> notifications (expiry reminders, renewal confirmations) outside that window
+> you MUST use an **approved message template**. Before going live you will
+> need to create & submit 1–5 real templates in Meta to match the keys shown
+> in **Settings → WhatsApp** (`whatsapp.reminder_5d_template`, etc.), or such
+> sends will be rejected with error 131047. (The reminder code currently sends
+> plain text; plan to switch reminders to template type in a future iteration
+> — say the word and I'll wire it up.)
+
+### Step-by-step connection
+
+1. **Create a Meta app** (developer account + business verification, ~3–10 days):
+   https://developers.facebook.com → *My Apps* → *Create App* → *Business* →
+   add *WhatsApp* → *Set up*.
+2. **Add your WhatsApp Business number** under Produção → WhatsApp →
+   *API Setup* — connect an existing number or get a new one inside Business
+   Suite. Keep **the phone number linked and the business account verified**.
+3. **Grab credentials** from your app's *API Setup* page:
+   - `WHATSAPP_PHONE_NUMBER_ID` (the number's phone number ID)
+   - `WHATSAPP_ACCESS_TOKEN` (the temporary or permanent access token;
+     for a permanent one create a **System User** in Business Settings with
+     `whatsapp_business_messaging` + `whatsapp_business_management` and generate
+     a token there)
+   - `WHATSAPP_APP_SECRET` (app secret, for webhook signature checks)
+   - `WHATSAPP_BUSINESS_ACCOUNT_ID` (optional, for reference)
+4. **Set the webhook** in the app: *Webhooks → Configuration* →
+   Subscribe to `messages`. Callback URL:
+   `https://yourdomain.com/api/v1/whatsapp/webhook` (or `http://<SERVER_IP>/api/v1/whatsapp/webhook` for testing — Meta requires HTTPS; use a tunnel like `cloudflared`/`ngrok` on the VPS if you only have an IP). Verify token:
+   the value of `WHATSAPP_WEBHOOK_VERIFY_TOKEN` you set in `.env.production`.
+   Click *Verify and Save*.
+5. **Set in `.env.production`**, then restart:
+
+   ```bash
+   WHATSAPP_API_URL="https://graph.facebook.com/v18.0"
+   WHATSAPP_API_VERSION="v18.0"
+   WHATSAPP_PHONE_NUMBER_ID="<phone_number_id>"
+   WHATSAPP_ACCESS_TOKEN="<permanent_token>"
+   WHATSAPP_BUSINESS_ACCOUNT_ID="<business_account_id>"
+   WHATSAPP_APP_SECRET="<app_secret>"
+   WHATSAPP_WEBHOOK_VERIFY_TOKEN="choose_a_random_string"
+   docker compose -f docker-compose.yml -f docker-compose.prod.yml restart api
+   ```
+
+6. **Test**: confirm `GET /api/v1/whatsapp/status` returns `configured: true`,
+   then send a message from **WhatsApp Messages → New Message**. The customer's
+   phone must be entered with country code (`+961…`). If the customer hasn't
+   messaged you in the last 24h, the manual text send is rejected by Meta —
+   use the WhatsApp app to message your business number once, then re-send.
+
+### Testing tips
+
+- Mirrors of this: our end-to-end run validated the full path (create →
+  send → `sent` + external id → webhook → `delivered`, plus failure → retry)
+  against a mock of the Graph API; nothing in our code needs a real number to
+  run. Real delivery to a customer's WhatsApp can only be verified with live
+  Meta credentials on the account bound to your number.
+- Watch message statuses on the **Messages** page: `pending → sent →
+  delivered → read`. `failed` messages show the Meta error (e.g. 131047 =
+  template missing, 131026 = recipient not on WhatsApp) and the app can retry
+  them on demand.
+- Until creds are set, everything queues as `pending` — nothing breaks.
 
 ---
 
