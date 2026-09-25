@@ -12,9 +12,17 @@ import { Roles } from '../../common/decorators/roles.decorator';
 
 @ApiTags('inventory')
 @ApiBearerAuth()
-@Controller('inventory')
+@Controller(['inventory', 'inventory-lifecycle'])
 export class InventoryController {
   constructor(private readonly inventoryService: InventoryService) {}
+
+  @Get('stats')
+  @Roles('ADMIN', 'STAFF')
+  @ApiOperation({ summary: 'Inventory asset lifecycle stats' })
+  @ApiResponse({ status: 200, description: 'Lifecycle stats returned' })
+  async getLifecycleStats() {
+    return this.inventoryService.getLifecycleStats();
+  }
 
   @Get('categories')
   @Roles('ADMIN', 'STAFF')

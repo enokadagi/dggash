@@ -108,7 +108,7 @@ export default function CustomersReportPage() {
         month,
         newCustomers: v.newCustomers,
         churned: 0,
-        active: report.byStatus.find((s) => s.status === "ACTIVE")?.count || 0,
+        active: report.byStatus.find((s) => s.status.toUpperCase() === "ACTIVE")?.count || 0,
         mrr: financial?.mrr || 0,
       }))
       .sort((a, b) => a.month.localeCompare(b.month));
@@ -118,8 +118,8 @@ export default function CustomersReportPage() {
   if (error) return <ErrorState message={(error as { message?: string })?.message || "Failed to load customer report"} onRetry={() => { refetchReport(); refetchFinancial(); }} />;
   if (!report) return <EmptyState message="No customer data available" />;
 
-  const activeCount = report.byStatus.find((s) => s.status === "ACTIVE")?.count || 0;
-  const suspendedCount = report.byStatus.find((s) => s.status === "SUSPENDED")?.count || 0;
+  const activeCount = report.byStatus.find((s) => s.status.toUpperCase() === "ACTIVE")?.count || 0;
+  const suspendedCount = report.byStatus.find((s) => s.status.toUpperCase() === "SUSPENDED")?.count || 0;
   const churnRate = financial && financial.activeCustomerCount > 0
     ? Math.round((financial.churnedCustomerCount / financial.activeCustomerCount) * 100)
     : 0;

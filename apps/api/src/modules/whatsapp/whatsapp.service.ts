@@ -130,7 +130,38 @@ export class WhatsAppService {
       throw new NotFoundException(`Template setting "${dto.templateKey}" not found. Add it in Settings -> WhatsApp.`);
     }
 
-    const variables = await this.buildVariables(customer, dto.variables);
+    const overrides = { ...(dto.variables || {}) };
+    if (customer) {
+      const activeSub = await this.prisma.subscription.findFirst({
+        where: {
+          customerId: customer.id,
+          deletedAt: null,
+          status: 'ACTIVE',
+          expiryDate: { gte: new Date() },
+        },
+        orderBy: { expiryDate: 'desc' },
+        include: { plan: true },
+      });
+      if (activeSub?.plan) {
+        if (!overrides.plan_name && !overrides.planName) {
+          overrides.plan_name = activeSub.plan.name;
+          overrides.planName = activeSub.plan.name;
+        }
+        if (!overrides.price) {
+          overrides.price = `${activeSub.plan.currency} ${activeSub.plan.price}`;
+        }
+        if (!overrides.expiry_date && !overrides.expiryDate) {
+          overrides.expiry_date = this.prettyDate(activeSub.expiryDate);
+          overrides.expiryDate = this.prettyDate(activeSub.expiryDate);
+        }
+        if (!overrides.days_remaining && !overrides.daysRemaining) {
+          overrides.days_remaining = this.daysUntil(activeSub.expiryDate).toString();
+          overrides.daysRemaining = overrides.days_remaining;
+        }
+      }
+    }
+
+    const variables = await this.buildVariables(customer, overrides);
     const messageBody = TemplateEngine.render(template.value, variables);
 
     return this.createAndSend({
@@ -382,7 +413,7 @@ export class WhatsAppService {
       .replace(/[^a-z0-9]+/g, '.')
       .replace(/^\.+|\.+$/g, '');
     if (!slug) throw new BadRequestException('Template name must include letters or numbers');
-    const key = `whatsapp.${slug}`;
+    const key = dto.key || `whatsapp.${slug}`;
 
     const existing = await this.prisma.companySetting.findUnique({ where: { key } });
     if (existing) {

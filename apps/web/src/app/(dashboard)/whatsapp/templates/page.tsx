@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { usePagination } from "@/hooks/use-pagination";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -48,31 +48,43 @@ interface TemplatesResponse {
   limit: number;
 }
 
-function NewTemplateDialog({
+function TemplateDialog({
   open,
   onOpenChange,
+  editing,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  editing: WhatsAppTemplate | null;
 }) {
   const queryClient = useQueryClient();
   const [name, setName] = React.useState("");
   const [body, setBody] = React.useState("");
   const [description, setDescription] = React.useState("");
 
+  React.useEffect(() => {
+    if (open && editing) {
+      setName(editing.name);
+      setBody(editing.body);
+      setDescription(editing.description || "");
+    } else if (open) {
+      setName("");
+      setBody("");
+      setDescription("");
+    }
+  }, [open, editing]);
+
   const saveMutation = useMutation({
     mutationFn: () =>
       api.post("/whatsapp/templates", {
+        ...(editing ? { key: editing.key } : {}),
         name: name.trim(),
         body: body.trim(),
         description: description.trim() || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp-templates"] });
-      toast.success("Template saved");
-      setName("");
-      setBody("");
-      setDescription("");
+      toast.success(editing ? "Template updated" : "Template saved");
       onOpenChange(false);
     },
     onError: (err: { message?: string }) => {
@@ -84,9 +96,9 @@ function NewTemplateDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New Template</DialogTitle>
+          <DialogTitle>{editing ? "Edit Template" : "New Template"}</DialogTitle>
           <DialogDescription>
-            Templates support variables like {"{{firstName}}"}, {"{{expiryDate}}"}, {"{{planName}}"}.
+            Templates support variables like {"{{firstName}}"}, {"{{planName}}"}, {"{{expiryDate}}"}.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
@@ -133,7 +145,7 @@ function NewTemplateDialog({
             disabled={saveMutation.isPending || !name.trim() || !body.trim()}
             onClick={() => saveMutation.mutate()}
           >
-            {saveMutation.isPending ? "Saving..." : "Save Template"}
+            {saveMutation.isPending ? "Saving..." : editing ? "Save Changes" : "Save Template"}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -145,6 +157,7 @@ export default function WhatsAppTemplatesPage() {
   const { page, limit, setPage } = usePagination();
   const [search, setSearch] = React.useState("");
   const [dialogOpen, setDialogOpen] = React.useState(false);
+  const [editing, setEditing] = React.useState<WhatsAppTemplate | null>(null);
   const debouncedSearch = useDebounce(search);
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -158,6 +171,15 @@ export default function WhatsAppTemplatesPage() {
   });
 
   const templates = data?.data || [];
+
+  const openCreate = () => {
+    setEditing(null);
+    setDialogOpen(true);
+  };
+  const openEdit = (template: WhatsAppTemplate) => {
+    setEditing(template);
+    setDialogOpen(true);
+  };
 
   const columns: ColumnDef<WhatsAppTemplate>[] = [
     {
@@ -206,7 +228,7 @@ export default function WhatsAppTemplatesPage() {
         title="WhatsApp Templates"
         description="Message templates used for reminders and customer notifications"
         actions={
-          <Button onClick={() => setDialogOpen(true)}>
+          <Button onClick={openCreate}>
             <Plus className="me-2 h-4 w-4" />
             New Template
           </Button>
@@ -221,7 +243,7 @@ export default function WhatsAppTemplatesPage() {
         <EmptyState
           message="No templates yet. Create one to start messaging customers."
           actionLabel="New Template"
-          onAction={() => setDialogOpen(true)}
+          onAction={openCreate}
         />
       ) : (
         <DataTable
@@ -233,10 +255,13 @@ export default function WhatsAppTemplatesPage() {
           totalPages={data ? Math.ceil(data.total / (data.limit || 1)) : 1}
           totalItems={data?.total}
           onPageChange={setPage}
+          actions={(row) => [
+            { label: "Edit", onClick: () => openEdit(row), icon: <Pencil className="h-4 w-4" /> },
+          ]}
         />
       )}
 
-      <NewTemplateDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+      <TemplateDialog open={dialogOpen} onOpenChange={setDialogOpen} editing={editing} />
     </div>
   );
 }

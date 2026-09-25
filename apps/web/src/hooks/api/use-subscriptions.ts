@@ -10,6 +10,7 @@ export interface Subscription {
   customerId: string;
   planId: string;
   status: string;
+  paymentStatus?: string;
   startDate: string;
   expiryDate: string;
   macAddress?: string;
@@ -102,6 +103,36 @@ export function useReactivateSubscription() {
     },
     onError: (error: { message?: string }) => {
       toast.error(error.message || "Failed to reactivate subscription");
+    },
+  });
+}
+
+export function useRenewSubscription() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/subscriptions/${id}/renew`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
+      toast.success("Subscription renewed");
+    },
+    onError: (error: { message?: string }) => {
+      toast.error(error.message || "Failed to renew subscription");
+    },
+  });
+}
+
+export function useCancelSubscription() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/subscriptions/${id}/cancel`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
+      toast.success("Subscription cancelled");
+    },
+    onError: (error: { message?: string }) => {
+      toast.error(error.message || "Failed to cancel subscription");
     },
   });
 }

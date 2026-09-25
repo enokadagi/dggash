@@ -24,21 +24,29 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { toast } from "sonner";
 
 interface WhatsAppMessage {
   id: string;
   recipientPhone: string;
   customerId?: string;
-  body: string;
+  messageBody: string;
   status: string;
-  templateId?: string;
+  templateType?: string;
   externalId?: string;
   sentAt?: string;
   deliveredAt?: string;
   readAt?: string;
   errorMessage?: string;
   createdAt: string;
+  customer?: { id: string; firstName: string; lastName: string; phone: string };
 }
 
 interface WhatsAppMessagesResponse {
@@ -63,13 +71,43 @@ export default function WhatsAppMessagesPage() {
   const debouncedSearch = useDebounce(search);
   const queryClient = useQueryClient();
   const [composerOpen, setComposerOpen] = React.useState(false);
+  const [selectedCustomerId, setSelectedCustomerId] = React.useState("");
   const [recipientPhone, setRecipientPhone] = React.useState("");
   const [body, setBody] = React.useState("");
 
+  const { data: customerData } = useQuery({
+    queryKey: ["whatsapp-customers"],
+    queryFn: () =>
+      api.get<{ data: { id: string; firstName: string; lastName: string; whatsappNumber?: string | null; phone: string }[] }>(
+        "/customers",
+        { page: 1, limit: 100 }
+      ),
+  });
+  const customers = customerData?.data || [];
+
+  const pickCustomer = (id: string) => {
+    setSelectedCustomerId(id);
+    const customer = customers.find((c) => c.id === id);
+    if (customer) {
+      setRecipientPhone(customer.whatsappNumber || customer.phone);
+    }
+  };
+
+  const handleSend = () => {
+    const customer = customers.find((c) => c.id === selectedCustomerId);
+    sendMutation.mutate(
+      customer
+        ? { recipientPhone, body, customerId: customer.id }
+        : { recipientPhone, body }
+    );
+  };
+
   const sendMutation = useMutation({
-    mutationFn: () => api.post("/whatsapp/send", { recipientPhone, body }),
+    mutationFn: (payload: { recipientPhone: string; body: string; customerId?: string }) =>
+      api.post("/whatsapp/send", payload),
     onSuccess: () => {
       toast.success("Message queued successfully");
+      setSelectedCustomerId("");
       setRecipientPhone("");
       setBody("");
       setComposerOpen(false);
@@ -99,10 +137,18 @@ export default function WhatsAppMessagesPage() {
   const columns: ColumnDef<typeof messages[number]>[] = [
     {
       accessorKey: "recipientPhone",
-      header: "Contact",
-      cell: ({ row }) => (
-        <span className="font-mono text-sm">{row.original.recipientPhone}</span>
-      ),
+      header: "To",
+      cell: ({ row }) => {
+        const c = row.original.customer;
+        return (
+          <div className="flex flex-col">
+            <span className="font-medium">
+              {c ? `${c.firstName} ${c.lastName}` : <span className="font-mono text-sm font-normal">{row.original.recipientPhone}</span>}
+            </span>
+            {c && <span className="font-mono text-xs text-muted-foreground">{row.original.recipientPhone}</span>}
+          </div>
+        );
+      },
     },
     {
       id: "direction",
@@ -114,10 +160,19 @@ export default function WhatsAppMessagesPage() {
       ),
     },
     {
-      accessorKey: "body",
+      accessorKey: "templateType",
+      header: "Type",
+      cell: ({ row }) => (
+        <span className="text-xs text-muted-foreground">
+          {row.original.templateType ? row.original.templateType.replace(/^whatsapp\./, "").replace(/_template$/, "") : "manual"}
+        </span>
+      ),
+    },
+    {
+      accessorKey: "messageBody",
       header: "Message",
       cell: ({ row }) => (
-        <span className="truncate max-w-[300px] block">{row.original.body}</span>
+        <span className="truncate max-w-[300px] block">{row.original.messageBody}</span>
       ),
     },
     {
@@ -173,6 +228,19 @@ export default function WhatsAppMessagesPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
+              <Label htmlFor="recipient-customer">Customer (optional)</Label>
+              <Select value={selectedCustomerId} onValueChange={pickCustomer}>
+                <SelectTrigger id="recipient-customer"><SelectValue placeholder="Select a customer" /></SelectTrigger>
+                <SelectContent>
+                  {customers.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>
+                      {c.firstName} {c.lastName} — {c.whatsappNumber || c.phone}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="recipient-phone">Recipient phone</Label>
               <Input id="recipient-phone" placeholder="+96170000000" value={recipientPhone} onChange={(event) => setRecipientPhone(event.target.value)} />
             </div>
@@ -183,7 +251,7 @@ export default function WhatsAppMessagesPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setComposerOpen(false)}>Cancel</Button>
-            <Button disabled={sendMutation.isPending || !recipientPhone.trim() || !body.trim()} onClick={() => sendMutation.mutate()}>
+            <Button disabled={sendMutation.isPending || !recipientPhone.trim() || !body.trim()} onClick={handleSend}>
               {sendMutation.isPending ? "Sending..." : "Send Message"}
             </Button>
           </DialogFooter>

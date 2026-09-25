@@ -15,10 +15,12 @@ import { ColumnDef } from "@tanstack/react-table";
 interface WhatsAppMessage {
   id: string;
   recipientPhone: string;
-  body: string;
+  customerId?: string;
+  messageBody: string;
   status: string;
   sentAt?: string;
   createdAt: string;
+  customer?: { id: string; firstName: string; lastName: string; phone: string };
 }
 
 export default function WhatsAppMessagesPage() {
@@ -29,22 +31,30 @@ export default function WhatsAppMessagesPage() {
 
   const { data } = useQuery({
     queryKey: ["whatsapp-messages", page, limit, debouncedSearch],
-    queryFn: () => api.get<PaginatedResponse<WhatsAppMessage>>("/whatsapp/messages", { page, limit, search: debouncedSearch || undefined }),
+    queryFn: () => api.get<PaginatedResponse<WhatsAppMessage> & { total: number; limit: number }>("/whatsapp/messages", { page, limit, search: debouncedSearch || undefined }),
   });
 
   const messages = data?.data || [];
-  const meta = data?.meta;
+  const totalPages = data ? Math.max(1, Math.ceil((data.total || 0) / (data.limit || limit))) : 1;
 
   const columns: ColumnDef<typeof messages[number]>[] = [
     {
       accessorKey: "recipientPhone",
       header: t("whatsapp.recipient"),
-      cell: ({ row }) => <span className="font-mono text-sm">{row.original.recipientPhone}</span>,
+      cell: ({ row }) => {
+        const c = row.original.customer;
+        return (
+          <div className="flex flex-col">
+            <span className="font-medium">{c ? `${c.firstName} ${c.lastName}` : <span className="font-mono text-sm font-normal">{row.original.recipientPhone}</span>}</span>
+            {c && <span className="font-mono text-xs text-muted-foreground">{row.original.recipientPhone}</span>}
+          </div>
+        );
+      },
     },
     {
-      accessorKey: "body",
+      accessorKey: "messageBody",
       header: t("whatsapp.body"),
-      cell: ({ row }) => <span className="truncate max-w-[300px] block">{row.original.body}</span>,
+      cell: ({ row }) => <span className="truncate max-w-[300px] block">{row.original.messageBody}</span>,
     },
     {
       accessorKey: "status",
@@ -67,8 +77,8 @@ export default function WhatsAppMessagesPage() {
         searchPlaceholder={`${t("common.search")}...`}
         onSearch={setSearch}
         page={page}
-        totalPages={meta?.totalPages || 1}
-        totalItems={meta?.total}
+        totalPages={totalPages}
+        totalItems={data?.total}
         onPageChange={setPage}
       />
     </div>

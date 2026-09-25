@@ -236,6 +236,51 @@ export class ReportsService {
     };
   }
 
+  async getFinancialOverview() {
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+
+    const [liveSubs, allCustomersWithSubs, currentRevenue, prevRevenue] = await Promise.all([
+      this.prisma.subscription.findMany({
+        where: { deletedAt: null, status: { in: ['ACTIVE', 'EXPIRING_SOON'] } },
+        include: { plan: { select: { price: true, durationDays: true } } },
+      }),
+      this.prisma.subscription.findMany({
+        where: { deletedAt: null },
+        select: { customerId: true, status: true },
+      }),
+      this.prisma.sale.aggregate({
+        where: { status: 'COMPLETED', createdAt: { gte: monthStart } },
+        _sum: { totalAmount: true },
+      }),
+      this.prisma.sale.aggregate({
+        where: { status: 'COMPLETED', createdAt: { gte: prevMonthStart, lt: monthStart } },
+        _sum: { totalAmount: true },
+      }),
+    ]);
+
+    const mrr = liveSubs.reduce((sum, sub) => {
+      const monthly = (Number(sub.plan.price) * 30) / Math.max(sub.plan.durationDays || 30, 1);
+      return sum + monthly;
+    }, 0);
+
+    const liveIds = new Set(liveSubs.map((s) => s.customerId));
+    const historicalIds = new Set(allCustomersWithSubs.map((s) => s.customerId));
+    const churnedCustomerCount = [...historicalIds].filter((id) => !liveIds.has(id)).length;
+
+    const currentTotal = Number(currentRevenue._sum.totalAmount || 0);
+    const prevTotal = Number(prevRevenue._sum.totalAmount || 0);
+    const revenueGrowth = prevTotal > 0 ? +(((currentTotal - prevTotal) / prevTotal) * 100).toFixed(1) : 0;
+
+    return {
+      mrr: +mrr.toFixed(2),
+      activeCustomerCount: liveIds.size,
+      churnedCustomerCount,
+      revenueGrowth,
+    };
+  }
+
   async getWhatsAppReport(query: QueryReportDto) {
     const range = this.dateRange(query);
     const where: any = {

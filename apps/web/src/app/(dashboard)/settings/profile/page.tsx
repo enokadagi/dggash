@@ -11,11 +11,27 @@ import { LoadingState, ErrorState } from "@/components/ui/status-states";
 import { useAuth } from "@/hooks/use-auth";
 import { api } from "@/lib/api";
 import { toast } from "sonner";
-import { User, Mail, Phone, Shield, Save, Loader2 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { User, Mail, Phone, Shield, Save, Loader2, KeyRound } from "lucide-react";
 
 export default function ProfilePage() {
   const { user, setUser } = useAuth();
   const [isSaving, setIsSaving] = React.useState(false);
+  const [passwordOpen, setPasswordOpen] = React.useState(false);
+  const [isChanging, setIsChanging] = React.useState(false);
+  const [passwordForm, setPasswordForm] = React.useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [passwordError, setPasswordError] = React.useState<string | null>(null);
   const [form, setForm] = React.useState({
     firstName: user?.firstName || "",
     lastName: user?.lastName || "",
@@ -50,6 +66,30 @@ export default function ProfilePage() {
       toast.error(apiErr.message || "Failed to update profile");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    setPasswordError(null);
+    if (passwordForm.newPassword.length < 8) {
+      setPasswordError("New password must be at least 8 characters.");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError("New password and confirmation do not match.");
+      return;
+    }
+    setIsChanging(true);
+    try {
+      await api.post("/auth/change-password", passwordForm);
+      toast.success("Password changed successfully");
+      setPasswordOpen(false);
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    } catch (err: unknown) {
+      const apiErr = err as { message?: string };
+      setPasswordError(apiErr.message || "Failed to change password");
+    } finally {
+      setIsChanging(false);
     }
   };
 
@@ -169,7 +209,7 @@ export default function ProfilePage() {
                 <span className="text-sm font-medium">{user.twoFactorEnabled ? "Enabled" : "Disabled"}</span>
               </div>
               <Separator />
-              <Button variant="outline" className="w-full" size="sm">
+              <Button variant="outline" className="w-full" size="sm" onClick={() => setPasswordOpen(true)}>
                 <Shield className="mr-2 h-4 w-4" />
                 Change Password
               </Button>
@@ -177,6 +217,61 @@ export default function ProfilePage() {
           </Card>
         </div>
       </div>
+
+      <Dialog open={passwordOpen} onOpenChange={setPasswordOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Change Password</DialogTitle>
+            <DialogDescription>
+              Enter your current password and choose a new one (minimum 8 characters).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="current-password">Current Password</Label>
+              <Input
+                id="current-password"
+                type="password"
+                value={passwordForm.currentPassword}
+                onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New Password</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={passwordForm.newPassword}
+                onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirm New Password</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                value={passwordForm.confirmPassword}
+                onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+              />
+            </div>
+            {passwordError && (
+              <p className="text-sm font-medium text-destructive">{passwordError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setPasswordOpen(false); setPasswordError(null); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleChangePassword}
+              disabled={isChanging || !passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword}
+            >
+              {isChanging ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+              Update Password
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

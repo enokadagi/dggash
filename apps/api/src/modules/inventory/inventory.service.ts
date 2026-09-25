@@ -17,6 +17,22 @@ export class InventoryService {
     private readonly auditService: AuditService,
   ) {}
 
+  async getLifecycleStats() {
+    const where = { deletedAt: null };
+    const products = await this.prisma.product.findMany({ where, select: { currentStock: true } });
+
+    const totalAssets = products.length;
+    const inUse = products.filter((p) => p.currentStock > 0).length;
+    const available = products.reduce((sum, p) => sum + p.currentStock, 0);
+
+    return {
+      totalAssets,
+      inUse,
+      available,
+      depreciatedValue: 0,
+    };
+  }
+
   // ─── Categories ────────────────────────────────────────
 
   async findCategories() {
