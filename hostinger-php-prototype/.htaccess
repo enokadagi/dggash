@@ -1,0 +1,13 @@
+RewriteEngine On
+
+# Keep the private migration code inaccessible when the project root is the document root.
+RewriteRule ^private(?:/|$) - [F,L]
+
+# Route API requests to the public front controller.
+RewriteCond %{REQUEST_URI} ^/api/v1(?:/|$) [NC]
+RewriteRule ^ public/index.php [QSA,L]
+
+# Send unknown paths through the same front controller for a consistent 404 response.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ public/index.php [QSA,L]

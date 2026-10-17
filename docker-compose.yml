@@ -34,7 +34,9 @@ services:
     networks:
       - dggash-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # `redis-cli ping` is refused with NOAUTH when a password is required, and
+      # the api service waits for this to pass before starting.
+      test: ["CMD-SHELL", "redis-cli -a ${REDIS_PASSWORD:-changeme123} ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -52,7 +54,9 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-dggash}
+      # Must use the same user the postgres service was initialised with,
+      # otherwise the API cannot authenticate to its own database.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-dggash}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-dggash}
       REDIS_URL: redis://:${REDIS_PASSWORD:-changeme123}@redis:6379
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
@@ -70,7 +74,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      # Long enough for `prisma migrate deploy` to finish on a fresh database.
+      start_period: 60s
 
   web:
     build:

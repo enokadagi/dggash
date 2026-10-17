@@ -27,18 +27,18 @@ FROM node:20-alpine AS runner
 
 WORKDIR /app
 
-RUN addgroup --system --gid 1001 AWIK NET && \
-    adduser --system --uid 1001 AWIK NET
+RUN addgroup --system --gid 1001 awiknet && \
+    adduser --system --uid 1001 awiknet
 
-COPY --from=builder --chown=AWIK NET:AWIK NET /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=AWIK NET:AWIK NET /app/apps/web/.next/static ./.next/static
-COPY --from=builder --chown=AWIK NET:AWIK NET /app/apps/web/public ./public
+COPY --from=builder --chown=awiknet:awiknet /app/apps/web/.next/standalone ./
+COPY --from=builder --chown=awiknet:awiknet /app/apps/web/.next/static ./.next/static
+COPY --from=builder --chown=awiknet:awiknet /app/apps/web/public ./public
 
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-USER AWIK NET
+USER awiknet
 
 EXPOSE 3000
 

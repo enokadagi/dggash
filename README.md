@@ -1,4 +1,4 @@
-# AWIK NET — ISP Management Platform
+﻿# AWIK NET â€” ISP Management Platform
 
 Full-stack management platform for an Internet Service Provider (ISP): customer
 management, subscription lifecycle with expiry tracking, point-of-sale and
@@ -58,11 +58,9 @@ npm run dev
 
 Seeded demo accounts:
 
-- Admin: `+96170000000` / `Admin123!`
-- Super admin: `+1000000000` / `SuperAdmin123!`
 
 > The API validates required env vars on boot (`apps/api/src/common/config/env.validation.ts`)
-> and exits if config is invalid. Never commit `.env` — only `.env.example`.
+> and exits if config is invalid. Never commit `.env` â€” only `.env.example`.
 
 ## Scripts (root)
 

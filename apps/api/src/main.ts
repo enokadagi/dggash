@@ -31,6 +31,15 @@ async function bootstrap() {
   app.use(compression());
   app.use(morgan('combined'));
 
+  // Behind nginx/Hostinger (and any other reverse proxy) `request.ip` would
+  // otherwise be the proxy's address, which breaks audit log IPs, rate limiting
+  // and lockouts. One hop is trusted because only our own proxy fronts the API.
+  const trustProxy = configService.get('TRUST_PROXY', '1');
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .set('trust proxy', trustProxy === 'false' ? false : Number(trustProxy) || 1);
+
   app.enableCors({
     origin: configService
       .get('ALLOWED_ORIGINS', 'http://localhost:3000')

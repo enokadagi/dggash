@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
+import { clearStoredTokens, setStoredTokens } from "@/lib/auth-storage";
 
 const AUTH_COOKIE_NAME = "awiknet_session";
 
@@ -57,22 +58,19 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => set({ user }),
 
       setTokens: (tokens) => {
-        localStorage.setItem("access_token", tokens.accessToken);
-        localStorage.setItem("refresh_token", tokens.refreshToken);
+        setStoredTokens(tokens);
         safeSetCookie(AUTH_COOKIE_NAME, "authenticated");
         set({ tokens });
       },
 
       login: (user, tokens) => {
-        localStorage.setItem("access_token", tokens.accessToken);
-        localStorage.setItem("refresh_token", tokens.refreshToken);
+        setStoredTokens(tokens);
         safeSetCookie(AUTH_COOKIE_NAME, "authenticated");
         set({ user, tokens, isAuthenticated: true });
       },
 
       logout: () => {
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
+        clearStoredTokens();
         safeRemoveCookie(AUTH_COOKIE_NAME);
         set({ user: null, tokens: null, isAuthenticated: false });
       },
@@ -86,12 +84,34 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "AWIK NET-auth",
+      storage: createJSONStorage(() => {
+        const fallbackStorage = (() => {
+          const values = new Map<string, string>();
+          return {
+            getItem: (key: string) => values.get(key) ?? null,
+            setItem: (key: string, value: string) => {
+              values.set(key, value);
+            },
+            removeItem: (key: string) => {
+              values.delete(key);
+            },
+            clear: () => {
+              values.clear();
+            },
+          } as Storage;
+        })();
+
+        if (typeof window === "undefined") {
+          return fallbackStorage;
+        }
+
+        return (window.sessionStorage ?? fallbackStorage) as Storage;
+      }),
       onRehydrateStorage: () => () => {
         useAuthStore.setState({ hasHydrated: true });
       },
       partialize: (state) => ({
         user: state.user,
-        tokens: state.tokens,
         isAuthenticated: state.isAuthenticated,
       }),
     }

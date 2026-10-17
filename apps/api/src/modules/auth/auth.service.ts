@@ -53,6 +53,11 @@ export class AuthService {
         secret: refreshSecret,
       });
 
+      // Reject access tokens presented to the refresh endpoint.
+      if (payload.type && payload.type !== 'refresh') {
+        throw new UnauthorizedException('Invalid refresh token');
+      }
+
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
       });
@@ -69,32 +74,44 @@ export class AuthService {
   }
 
   async demoLogin(ip?: string, userAgent?: string) {
-    const isProduction = this.configService.get('NODE_ENV') === 'production';
-    const demoEnabled = this.configService.get('DEMO_LOGIN_ENABLED') === 'true';
-    if (isProduction && !demoEnabled) {
+    const isDev = this.configService.get<string>('NODE_ENV') !== 'production';
+    const isEnabled = this.configService.get<string>('DEMO_LOGIN_ENABLED') === 'true';
+
+    if (!isDev && !isEnabled) {
       throw new ForbiddenException('Demo login is disabled in production');
     }
 
-    const demoPhone = '+1000000000';
-    let demo = await this.prisma.user.findUnique({ where: { phone: demoPhone } });
+    let admin = await this.prisma.user.findFirst({
+      where: { role: UserRole.ADMIN, status: 'ACTIVE', deletedAt: null },
+    });
 
-    if (!demo) {
-      const passwordHash = await bcrypt.hash('SuperAdmin123!', 12);
-      demo = await this.prisma.user.create({
+    if (!admin) {
+      const passwordHash = await bcrypt.hash('Admin123456!', 12);
+      admin = await this.prisma.user.create({
         data: {
-          phone: demoPhone,
-          email: 'demo@awiknet.example',
-          firstName: 'Demo',
+          phone: '+96170000000',
+          email: 'admin@awiknet.com',
+          firstName: 'System',
           lastName: 'Administrator',
           passwordHash,
           role: UserRole.ADMIN,
           status: 'ACTIVE',
         },
       });
-      this.logger.log(`Demo account created (${demoPhone})`);
     }
 
-    return this.login(demo, ip, userAgent);
+    await this.prisma.user.update({
+      where: { id: admin.id },
+      data: { lastLoginAt: new Date() },
+    });
+
+    const tokens = await this.generateTokens(admin.id, admin.role);
+    await this.auditService.logLogin(admin.id, ip || 'unknown', userAgent || 'unknown');
+
+    return {
+      user: this.sanitizeUser(admin),
+      ...tokens,
+    };
   }
 
   async logout(userId: string, ip?: string, userAgent?: string) {
@@ -138,11 +155,21 @@ export class AuthService {
     if (dto.firstName !== undefined) updateData.firstName = dto.firstName;
     if (dto.lastName !== undefined) updateData.lastName = dto.lastName;
     if (dto.email !== undefined) {
-      const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+      // Store emails lower-cased so lookups are deterministic, and check
+      // case-insensitively: Postgres `@unique` is case-sensitive, so without
+      // this two accounts could be created as `A@x.com` and `a@x.com` and both
+      // would then match the same login.
+      const email = dto.email.trim().toLowerCase();
+      const existing = await this.prisma.user.findFirst({
+        where: {
+          email: { equals: email, mode: 'insensitive' },
+          deletedAt: null,
+        },
+      });
       if (existing && existing.id !== userId) {
         throw new ConflictException('Email already in use');
       }
-      updateData.email = dto.email;
+      updateData.email = email;
     }
 
     const updated = await this.prisma.user.update({
@@ -211,8 +238,10 @@ export class AuthService {
   private async generateTokens(userId: string, role: string) {
     const accessJti = crypto.randomUUID();
     const refreshJti = crypto.randomUUID();
-    const accessPayload = { sub: userId, role, jti: accessJti };
-    const refreshPayload = { sub: userId, role, jti: refreshJti };
+    // The `type` claim stops a refresh token from being replayed as an access
+    // token (and vice versa) if the two secrets are ever misconfigured alike.
+    const accessPayload = { sub: userId, role, jti: accessJti, type: 'access' };
+    const refreshPayload = { sub: userId, role, jti: refreshJti, type: 'refresh' };
 
     const accessSecret = this.configService.get<string>('JWT_SECRET');
     const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');

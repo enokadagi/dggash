@@ -52,6 +52,8 @@ export function useCreateSubscription() {
     mutationFn: (data: CreateSubscriptionInput) => api.post<Subscription>("/subscriptions", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
+      queryClient.invalidateQueries({ queryKey: ["customer"] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       toast.success("Subscription created successfully");
     },
     onError: (error: { message?: string }) => {
@@ -69,6 +71,8 @@ export function useUpdateSubscription() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
       queryClient.invalidateQueries({ queryKey: ["subscriptions", variables.id] });
+      queryClient.invalidateQueries({ queryKey: ["customer"] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       toast.success("Subscription updated successfully");
     },
     onError: (error: { message?: string }) => {
@@ -84,6 +88,8 @@ export function useSuspendSubscription() {
     mutationFn: (id: string) => api.post(`/subscriptions/${id}/suspend`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
+      queryClient.invalidateQueries({ queryKey: ["customer"] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       toast.success("Subscription suspended");
     },
     onError: (error: { message?: string }) => {
@@ -99,6 +105,8 @@ export function useReactivateSubscription() {
     mutationFn: (id: string) => api.post(`/subscriptions/${id}/activate`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
+      queryClient.invalidateQueries({ queryKey: ["customer"] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
       toast.success("Subscription reactivated");
     },
     onError: (error: { message?: string }) => {
@@ -111,10 +119,16 @@ export function useRenewSubscription() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (id: string) => api.post(`/subscriptions/${id}/renew`, {}),
+    mutationFn: (args: string | { id: string; data?: { planId?: string; durationDays?: number } }) => {
+      const id = typeof args === "string" ? args : args.id;
+      const data = typeof args === "string" ? {} : (args.data || {});
+      return api.post(`/subscriptions/${id}/renew`, data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
-      toast.success("Subscription renewed");
+      queryClient.invalidateQueries({ queryKey: ["customer"] });
+      queryClient.invalidateQueries({ queryKey: ["customers"] });
+      toast.success("Subscription renewed successfully");
     },
     onError: (error: { message?: string }) => {
       toast.error(error.message || "Failed to renew subscription");

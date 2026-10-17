@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatCurrency, getRelativeTime } from "@/lib/utils";
+import { SubscribersMapCard } from "@/components/dashboard/subscribers-map";
 
 export default function DashboardPage() {
   const { data: salesRes, isLoading: salesLoading } = useSales({ page: 1, limit: 50 });
@@ -129,7 +130,7 @@ export default function DashboardPage() {
                 {sales.slice(0, 5).map((s) => (
                   <li key={s.id}>
                     <Link
-                      href={`/sales/${s.id}`}
+                      href={`/sales/detail?id=${encodeURIComponent(s.id)}`}
                       className="flex items-center justify-between gap-3 rounded-md px-2 py-3 transition-colors hover:bg-accent"
                     >
                       <div className="min-w-0">
@@ -194,6 +195,8 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <SubscribersMapCard />
 
       <div>
         <h2 className="mb-4 text-lg font-semibold">Quick Actions</h2>

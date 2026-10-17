@@ -1,12 +1,12 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Eye, EyeOff, Loader2, Play } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { useAuthStore } from "@/stores/auth-store";
 import { loginSchema, type LoginInput } from "@/lib/validations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +37,7 @@ export default function LoginPage() {
   } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
-      phone: "",
+      identifier: "",
       password: "",
       rememberMe: false,
     },
@@ -47,40 +47,11 @@ export default function LoginPage() {
     setIsLoading(true);
     setError(null);
     try {
-      await signIn(data.phone, data.password);
+      await signIn(data.identifier, data.password);
       router.push("/sales/pos");
     } catch (err: unknown) {
       const apiErr = err as { message?: string };
-      setError(apiErr.message || "Invalid phone or password");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleDemoLogin = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
-      const response = await fetch(`${apiBaseUrl}/auth/demo`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-      const result = await response.json();
-      if (!response.ok) {
-        throw new Error(result.message || "Demo login failed");
-      }
-      const demoData = result.data || result;
-      if (!demoData?.user || !demoData?.accessToken) {
-        throw new Error("Demo login returned unexpected data");
-      }
-      const { user: userData, accessToken, refreshToken } = demoData;
-      const { login } = useAuthStore.getState();
-      login(userData, { accessToken, refreshToken });
-      router.push("/sales/pos");
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Demo login failed. Please try again.";
-      setError(message);
+      setError(apiErr.message || "Invalid phone/email or password");
     } finally {
       setIsLoading(false);
     }
@@ -91,7 +62,7 @@ export default function LoginPage() {
       <CardHeader className="space-y-1">
         <CardTitle className="text-2xl font-bold">Sign in</CardTitle>
         <CardDescription>
-          Enter your phone number and password to access your account
+          Enter your phone number or email and password to access your account
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit(onSubmit)}>
@@ -102,19 +73,22 @@ export default function LoginPage() {
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="phone">Phone Number</Label>
+            <Label htmlFor="identifier">Phone or Email</Label>
             <Input
-              id="phone"
-              type="tel"
-              placeholder="+1234567890"
-              {...register("phone")}
-              aria-invalid={!!errors.phone}
+              id="identifier"
+              type="text"
+              autoComplete="username"
+              inputMode="email"
+              placeholder="+96170000000 or admin@awiknet.example"
+              {...register("identifier")}
+              aria-invalid={!!errors.identifier}
             />
-            {errors.phone && (
-              <p className="text-xs text-destructive">{errors.phone.message}</p>
-            )}
-            {!errors.phone && (
-              <p className="text-xs text-muted-foreground">International format, e.g. +96170000000</p>
+            {errors.identifier ? (
+              <p className="text-xs text-destructive">{errors.identifier.message}</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                Use your phone number in international format or your email address
+              </p>
             )}
           </div>
           <div className="space-y-2">
@@ -153,6 +127,9 @@ export default function LoginPage() {
                 Remember me
               </Label>
             </div>
+            <Link className="ms-auto text-sm text-primary underline-offset-4 hover:underline" href="/forgot-password/">
+              Forgot password?
+            </Link>
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
@@ -170,22 +147,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <Button
-            type="button"
-            variant="outline"
-            className="w-full"
-            disabled={isLoading}
-            onClick={handleDemoLogin}
-          >
-            <Play className="me-2 h-4 w-4" />
-            Try Demo Account
-          </Button>
 
-          {process.env.NODE_ENV !== "production" && (
-            <p className="text-center text-xs text-muted-foreground">
-              Demo &amp; admin login: +1000000000 / SuperAdmin123! · +96170000000 / Admin123!
-            </p>
-          )}
         </CardFooter>
       </form>
     </Card>

@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { CreatePlanDto } from './dto/create-plan.dto';
 import { UpdatePlanDto } from './dto/update-plan.dto';
 import { QueryPlanDto } from './dto/query-plan.dto';
+import { safeOrderBy } from '../../common/utils/sort';
 
 @Injectable()
 export class PlansService {
@@ -25,7 +26,7 @@ export class PlansService {
     const [data, total] = await this.prisma.$transaction([
       this.prisma.plan.findMany({
         where,
-        orderBy: { [query.sortBy || 'createdAt']: query.sortOrder || 'desc' },
+        orderBy: safeOrderBy(query.sortBy, ['name', 'price', 'speed', 'durationDays', 'isActive', 'createdAt', 'updatedAt'] as const, 'createdAt', query.sortOrder),
         skip: (page - 1) * limit,
         take: limit,
       }),

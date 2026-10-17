@@ -1,0 +1,38 @@
+# AWIK NET — Hostinger Web Server Configuration (.htaccess)
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Force HTTPS
+  RewriteCond %{HTTPS} off
+  RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+  # Bridge same-origin API calls to the PHP app kept outside public_html.
+  RewriteRule ^api/v1(?:/|$) api/index.php [QSA,L]
+
+  # Preserve existing record URLs while the static pages read IDs from the query string.
+  RewriteRule ^sales/([0-9a-fA-F-]{36})/invoice/?$ sales/invoice/?id=$1 [QSA,L,NE]
+  RewriteRule ^sales/([0-9a-fA-F-]{36})/?$ sales/detail/?id=$1 [QSA,L,NE]
+  RewriteRule ^customers/([0-9a-fA-F-]{36})/?$ customers/view/?id=$1 [QSA,L,NE]
+
+  # Route requests to index.html for client-side SPA routing
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^ index.html [QSA,L]
+</IfModule>
+
+# Security Headers
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "DENY"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+  Header set Permissions-Policy "camera=(self), microphone=(), geolocation=(self)"
+  Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://unpkg.com; font-src 'self' data:; media-src 'self' blob:; connect-src 'self'; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+</IfModule>
+
+# Compression
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css text/javascript application/javascript application/json
+</IfModule>

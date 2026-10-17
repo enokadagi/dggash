@@ -1,6 +1,7 @@
 import { Injectable, BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { StockMovementType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { safeOrderBy } from '../../common/utils/sort';
 import { AuditService } from '../audit/audit.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -119,18 +120,40 @@ export class InventoryService {
     if (query.categoryId) where.categoryId = query.categoryId;
     if (query.isActive !== undefined) where.isActive = query.isActive === 'true';
 
-    let items = await this.prisma.product.findMany({
-      where,
-      include: { category: true },
-      orderBy: { [query.sortBy || 'createdAt']: query.sortOrder || 'desc' },
-    });
+    const orderBy = safeOrderBy(
+      query.sortBy,
+      ['name', 'sku', 'barcode', 'purchasePrice', 'sellingPrice', 'currentStock', 'minStock', 'createdAt', 'updatedAt'] as const,
+      'createdAt',
+      query.sortOrder,
+    );
 
+    // Comparing currentStock against minStock is a column-to-column check that
+    // the Prisma filter DSL cannot express, so this one filter stays in memory.
     if (query.lowStock === 'true') {
-      items = items.filter((p) => p.currentStock <= p.minStock);
+      const matched = await this.prisma.product.findMany({
+        where,
+        include: { category: true },
+        orderBy,
+      });
+      const lowStock = matched.filter((p) => p.currentStock <= p.minStock);
+      return {
+        data: lowStock.slice((page - 1) * limit, page * limit),
+        total: lowStock.length,
+        page,
+        limit,
+      };
     }
 
-    const total = items.length;
-    const data = items.slice((page - 1) * limit, page * limit);
+    const [data, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        include: { category: true },
+        orderBy,
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
 
     return { data, total, page, limit };
   }
@@ -157,23 +180,61 @@ export class InventoryService {
     };
   }
 
+  /**
+   * Single product resolution used by every scanning surface (USB keyboard
+   * wedge and camera) as well as the manual search box.
+   *
+   * Exact identifiers are resolved first, in priority order, and only then does
+   * it fall back to a partial name match. Doing it in one combined query was a
+   * real bug for scanning: Postgres may satisfy an `OR` with the fuzzy
+   * `name contains` branch, so scanning a barcode could return whichever
+   * product happened to match by name instead of the one that owns the code.
+   */
   async lookup(query: string) {
     if (!query) throw new BadRequestException('Query parameter "q" is required');
 
-    const product = await this.prisma.product.findFirst({
-      where: {
-        deletedAt: null,
-        OR: [
-          { barcode: query.trim() },
-          { sku: query.trim() },
-          { id: query.trim() },
-          { name: { contains: query.trim(), mode: 'insensitive' } },
-        ],
-      },
-      include: { category: true },
-    });
+    // Scanners can append CR/LF or stray whitespace; normalise before matching.
+    const term = query.replace(/[\r\n\t ]+/g, '').trim();
+    if (!term) throw new BadRequestException('Query parameter "q" is required');
 
-    return product || null;
+    const include = { category: true } as const;
+
+    // 1. Barcode - what the HENEX device and printed labels actually send.
+    const byBarcode = await this.prisma.product.findFirst({
+      where: { barcode: term, deletedAt: null },
+      include,
+    });
+    if (byBarcode) return byBarcode;
+
+    // 2. SKU.
+    const bySku = await this.prisma.product.findFirst({
+      where: { sku: term, deletedAt: null },
+      include,
+    });
+    if (bySku) return bySku;
+
+    // 3. Internal id.
+    const byId = await this.prisma.product.findFirst({
+      where: { id: term, deletedAt: null },
+      include,
+    });
+    if (byId) return byId;
+
+    // 4. Free-text search fallback (manual typing). Only reached when no exact
+    //    identifier matched, so it can never shadow a real barcode.
+    const byName = await this.prisma.product.findFirst({
+      where: { name: { contains: term, mode: 'insensitive' } },
+      orderBy: { name: 'asc' },
+      include,
+    });
+    if (byName) return byName;
+
+    // 5. Last resort: a partial SKU, still deterministic.
+    return this.prisma.product.findFirst({
+      where: { sku: { contains: term, mode: 'insensitive' } },
+      orderBy: { sku: 'asc' },
+      include,
+    });
   }
 
   async findById(id: string) {
@@ -319,6 +380,15 @@ export class InventoryService {
     const where: any = {};
     if (query.productId) where.productId = query.productId;
     if (query.movementType) where.movementType = query.movementType;
+    if (query.search) {
+      where.OR = [
+        { reference: { contains: query.search, mode: 'insensitive' } },
+        { notes: { contains: query.search, mode: 'insensitive' } },
+        { product: { name: { contains: query.search, mode: 'insensitive' } } },
+        { product: { sku: { contains: query.search, mode: 'insensitive' } } },
+        { product: { barcode: { contains: query.search, mode: 'insensitive' } } },
+      ];
+    }
     if (query.dateFrom || query.dateTo) {
       where.createdAt = {};
       if (query.dateFrom) where.createdAt.gte = new Date(query.dateFrom);

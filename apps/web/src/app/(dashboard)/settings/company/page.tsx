@@ -1,10 +1,11 @@
-"use client";
+﻿"use client";
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { PageHeader } from "@/components/ui/page-header";
 import { LoadingState, ErrorState } from "@/components/ui/status-states";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { PrinterSetup } from "@/components/printer/printer-setup";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,9 +19,16 @@ interface SettingEntry {
 
 const DEFAULTS: Record<string, string> = {
   "company.name": "",
+  "company.tagline": "",
   "company.address": "",
   "company.phone": "",
+  "company.whatsapp": "",
+  "company.email": "",
+  "company.website": "",
+  "company.taxId": "",
+  "company.logo": "",
   "company.currency": "USD",
+  "company.timezone": "Asia/Beirut",
 };
 
 export default function CompanySettingsPage() {
@@ -117,13 +125,69 @@ export default function CompanySettingsPage() {
               />
             </div>
             <div className="space-y-2">
+              <Label htmlFor="tagline">Tagline</Label>
+              <Input
+                id="tagline"
+                value={form["company.tagline"]}
+                onChange={(e) => updateField("company.tagline", e.target.value)}
+                placeholder="INTERNET SERVICE PROVIDER"
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="phone">Phone</Label>
               <Input
                 id="phone"
                 type="tel"
                 value={form["company.phone"]}
                 onChange={(e) => updateField("company.phone", e.target.value)}
-                placeholder="+1234567890"
+                placeholder="+96170000000"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="whatsapp">WhatsApp Number</Label>
+              <Input
+                id="whatsapp"
+                type="tel"
+                value={form["company.whatsapp"]}
+                onChange={(e) => updateField("company.whatsapp", e.target.value)}
+                placeholder="+96170000000"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={form["company.email"]}
+                onChange={(e) => updateField("company.email", e.target.value)}
+                placeholder="info@company.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="website">Website</Label>
+              <Input
+                id="website"
+                value={form["company.website"]}
+                onChange={(e) => updateField("company.website", e.target.value)}
+                placeholder="https://yourcompany.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="taxId">Tax/VAT ID</Label>
+              <Input
+                id="taxId"
+                value={form["company.taxId"]}
+                onChange={(e) => updateField("company.taxId", e.target.value)}
+                placeholder="123456789"
+              />
+            </div>
+            <div className="space-y-2 sm:col-span-2">
+              <Label htmlFor="logo">Logo URL</Label>
+              <Input
+                id="logo"
+                value={form["company.logo"]}
+                onChange={(e) => updateField("company.logo", e.target.value)}
+                placeholder="https://yourcompany.com/logo.png"
               />
             </div>
             <div className="space-y-2">
@@ -133,6 +197,15 @@ export default function CompanySettingsPage() {
                 value={form["company.currency"]}
                 onChange={(e) => updateField("company.currency", e.target.value)}
                 placeholder="USD"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="timezone">Timezone</Label>
+              <Input
+                id="timezone"
+                value={form["company.timezone"]}
+                onChange={(e) => updateField("company.timezone", e.target.value)}
+                placeholder="Asia/Beirut"
               />
             </div>
           </div>
@@ -147,6 +220,8 @@ export default function CompanySettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <PrinterSetup />
     </div>
   );
 }

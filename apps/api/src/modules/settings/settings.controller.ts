@@ -11,7 +11,10 @@ export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
   @Get()
-  @Roles('ADMIN')
+  // Readable by STAFF as well as ADMIN: the POS needs the company identity
+  // (name, contacts, logo) to render a correct A4 invoice. Writes below stay
+  // ADMIN-only, so no cashier can change company details.
+  @Roles('ADMIN', 'STAFF')
   @ApiOperation({ summary: 'Get all settings' })
   @ApiResponse({ status: 200, description: 'Settings retrieved' })
   async findAll() {

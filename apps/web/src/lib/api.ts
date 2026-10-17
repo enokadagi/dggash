@@ -1,5 +1,8 @@
+import { clearStoredTokens, getStoredAccessToken, getStoredRefreshToken, setStoredTokens } from "@/lib/auth-storage";
+
 function resolveBaseUrl() {
-  const configuredUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api/v1";
+  const configuredUrl = process.env.NEXT_PUBLIC_API_URL ||
+    (process.env.NODE_ENV === "production" ? "/api/v1" : "http://localhost:3001/api/v1");
   return configuredUrl.replace(/\/$/, '').endsWith('/api/v1')
     ? configuredUrl.replace(/\/$/, '')
     : `${configuredUrl.replace(/\/$/, '')}/api/v1`;
@@ -51,7 +54,7 @@ function processQueue(error: unknown) {
 
 async function refreshAccessToken(): Promise<boolean> {
   try {
-    const refreshToken = typeof window !== "undefined" ? localStorage.getItem("refresh_token") : null;
+    const refreshToken = getStoredRefreshToken();
     if (!refreshToken) return false;
 
     const response = await fetch(`${BASE_URL}/auth/refresh`, {
@@ -64,12 +67,22 @@ async function refreshAccessToken(): Promise<boolean> {
 
     const data = await response.json();
     const tokens = data.data || data;
-    localStorage.setItem("access_token", tokens.accessToken);
-    localStorage.setItem("refresh_token", tokens.refreshToken);
+    setStoredTokens(tokens);
     return true;
   } catch {
     return false;
   }
+}
+
+async function parseResponse<T>(response: Response): Promise<T> {
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  const raw = await response.json();
+  if (raw && typeof raw === 'object' && 'success' in raw && 'data' in raw) {
+    return raw.data as T;
+  }
+  return raw as T;
 }
 
 export async function fetchApi<T>(
@@ -77,7 +90,7 @@ export async function fetchApi<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${BASE_URL}${endpoint}`;
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+  const token = getStoredAccessToken();
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -101,18 +114,17 @@ export async function fetchApi<T>(
 
       if (success) {
         processQueue(null);
-        const newToken = localStorage.getItem("access_token");
+        const newToken = getStoredAccessToken();
         headers["Authorization"] = `Bearer ${newToken}`;
         const retryResponse = await fetch(url, { ...options, headers });
         if (!retryResponse.ok) {
           const errorData = await retryResponse.json().catch(() => ({}));
           throw { message: errorData.message || "Request failed", statusCode: retryResponse.status };
         }
-        return retryResponse.json();
+        return parseResponse<T>(retryResponse);
       } else {
         processQueue(new Error("Token refresh failed"));
-        localStorage.removeItem("access_token");
-        localStorage.removeItem("refresh_token");
+        clearStoredTokens();
         if (typeof window !== "undefined") {
           window.location.href = "/login";
         }
@@ -138,11 +150,7 @@ export async function fetchApi<T>(
     return undefined as T;
   }
 
-  const raw = await response.json();
-  if (raw && typeof raw === 'object' && 'success' in raw && 'data' in raw) {
-    return raw.data as T;
-  }
-  return raw as T;
+  return parseResponse<T>(response);
 }
 
 export const api = {
@@ -185,7 +193,7 @@ export const api = {
   },
 
   upload<T>(endpoint: string, formData: FormData): Promise<T> {
-    const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null;
+    const token = getStoredAccessToken();
     const headers: Record<string, string> = {};
     if (token) {
       headers["Authorization"] = `Bearer ${token}`;

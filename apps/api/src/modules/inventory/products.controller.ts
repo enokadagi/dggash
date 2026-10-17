@@ -7,6 +7,7 @@ import { InventoryService } from './inventory.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { QueryProductDto } from './dto/query-product.dto';
+import { QueryStockMovementDto } from './dto/query-stock-movement.dto';
 import { CreateStockMovementDto } from './dto/create-stock-movement.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -43,12 +44,8 @@ export class ProductsController {
   @Get('movements')
   @ApiOperation({ summary: 'Get all stock movements' })
   @ApiResponse({ status: 200, description: 'Movements listed' })
-  async getMovements(@Query() query: QueryProductDto) {
-    return this.inventoryService.findMovements({
-      page: query.page,
-      limit: query.limit,
-      search: query.search,
-    });
+  async getMovements(@Query() query: QueryStockMovementDto) {
+    return this.inventoryService.findMovements(query);
   }
 
   @Get(':id/movements')
@@ -101,6 +98,7 @@ export class ProductsController {
   }
 
   @Post(':id/movements')
+  @Roles('ADMIN', 'STAFF')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create stock movement (purchase / return / adjustment / damaged / lost)' })
   @ApiParam({ name: 'id', type: String })

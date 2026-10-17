@@ -58,7 +58,7 @@ export default function CustomersPage() {
       accessorKey: "firstName",
       header: "Customer",
       cell: ({ row }) => (
-        <Link href={`/customers/${row.original.id}`} className="flex flex-col hover:underline">
+        <Link href={`/customers/view?id=${encodeURIComponent(row.original.id)}`} className="flex flex-col hover:underline">
           <span className="font-medium">{row.original.firstName} {row.original.lastName}</span>
           <span className="text-xs text-muted-foreground">{row.original.phone}</span>
         </Link>
@@ -144,7 +144,7 @@ export default function CustomersPage() {
           totalItems={data?.total}
           onPageChange={setPage}
           actions={(row) => [
-            { label: "View", onClick: () => (window.location.href = `/customers/${row.id}`), icon: <Eye className="h-4 w-4" /> },
+            { label: "View", onClick: () => (window.location.href = `/customers/view?id=${encodeURIComponent(row.id)}`), icon: <Eye className="h-4 w-4" /> },
             { label: "Delete", onClick: () => setDeleteId(row.id), icon: <Trash2 className="h-4 w-4" />, destructive: true },
           ]}
         />

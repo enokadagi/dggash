@@ -1,7 +1,20 @@
 import { z } from "zod";
 
+const phonePattern = /^\+[1-9]\d{1,14}$/;
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+const identifier = z
+  .string()
+  .min(1, "Phone or email is required")
+  .max(254, "Identifier is too long")
+  .refine((v) => phonePattern.test(v.trim()) || emailPattern.test(v.trim()), {
+    message: "Enter a valid phone or email",
+  });
+
 export const loginSchema = z.object({
-  phone: z.string().min(1, "Phone is required").regex(/^\+[1-9]\d{1,14}$/, "Phone must be in E.164 format"),
+  identifier,
+  phone: identifier.optional(),
+  email: identifier.optional(),
   password: z.string().min(6, "Password must be at least 6 characters"),
   rememberMe: z.boolean().optional(),
 });

@@ -10,6 +10,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -28,10 +29,12 @@ export class AuthController {
   @Post('login')
   @Public()
   @UseGuards(AccountLockoutGuard, LocalAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with phone and password' })
+  @ApiOperation({ summary: 'Login with phone or email and password' })
   @ApiResponse({ status: 200, description: 'Login successful' })
   @ApiResponse({ status: 401, description: 'Invalid credentials' })
+  @ApiResponse({ status: 429, description: 'Too many login attempts' })
   async login(@Request() req: any, @Body() dto: LoginDto) {
     return this.authService.login(req.user, req.ip, req.headers['user-agent']);
   }
@@ -49,9 +52,8 @@ export class AuthController {
   @Post('demo')
   @Public()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login with the demo account' })
-  @ApiResponse({ status: 200, description: 'Demo login successful' })
-  @ApiResponse({ status: 403, description: 'Demo login disabled in production' })
+  @ApiOperation({ summary: 'Demo login disabled' })
+  @ApiResponse({ status: 403, description: 'Demo login is disabled' })
   async demo(@Request() req: any) {
     return this.authService.demoLogin(req.ip, req.headers['user-agent']);
   }

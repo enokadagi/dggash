@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
 import { useAuthStore } from "@/stores/auth-store";
+import { Loader2 } from "lucide-react";
 
 export default function DashboardLayout({
   children,
@@ -26,7 +27,16 @@ export default function DashboardLayout({
   }, [ready, isAuthenticated, router]);
 
   if (!ready || !isAuthenticated) {
-    return null;
+    // Render the shell instead of `null` so the user never sees a blank page
+    // while the auth store rehydrates on first load.
+    return (
+      <div className="flex h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Loading your workspace…</p>
+        </div>
+      </div>
+    );
   }
 
   return (

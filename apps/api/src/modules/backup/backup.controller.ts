@@ -1,8 +1,10 @@
 import {
-  Controller, Get, Post, Delete, Body, Param, Query,
+  Controller, Get, Post, Delete, Body, Param, Query, Res,
   HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import { Response } from 'express';
+import { createReadStream } from 'fs';
 import { BackupService } from './backup.service';
 import { ConfigService } from '@nestjs/config';
 import { CreateBackupDto } from './dto/create-backup.dto';
@@ -89,6 +91,24 @@ export class BackupController {
   @ApiResponse({ status: 200, description: 'Integrity check result' })
   async verifyIntegrity(@Param('id') id: string) {
     return this.backupService.verifyBackupIntegrity(id);
+  }
+
+  @Get(':id/download')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Download a backup file' })
+  @ApiParam({ name: 'id', type: String })
+  @ApiResponse({ status: 200, description: 'Backup file stream' })
+  @ApiResponse({ status: 404, description: 'Backup or file not found' })
+  async download(@Param('id') id: string, @Res() res: Response) {
+    const { filepath, filename } = this.backupService.getBackupFile(id);
+    res.setHeader('Content-Type', 'application/gzip');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/["\r\n]/g, '')}"`);
+    const stream = createReadStream(filepath);
+    stream.on('error', () => {
+      if (!res.headersSent) res.status(404).json({ success: false, message: 'Backup file unavailable' });
+      else res.end();
+    });
+    stream.pipe(res);
   }
 
   @Get('schedule')

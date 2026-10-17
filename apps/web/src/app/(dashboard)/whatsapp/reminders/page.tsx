@@ -3,7 +3,7 @@
 import * as React from "react";
 import { ColumnDef } from "@tanstack/react-table";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { BellRing, Send } from "lucide-react";
+import { BellRing, Send, MessageCircle, ExternalLink, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { usePagination } from "@/hooks/use-pagination";
 import { PageHeader } from "@/components/ui/page-header";
@@ -15,6 +15,7 @@ import { LoadingState, ErrorState, EmptyState } from "@/components/ui/status-sta
 import { Label } from "@/components/ui/label";
 import { formatDateTime } from "@/lib/utils";
 import { toast } from "sonner";
+import { openWhatsAppWeb, buildExpiryReminderText } from "@/lib/whatsapp-link";
 import {
   Select,
   SelectContent,
@@ -47,9 +48,17 @@ interface RemindersResponse {
   limit: number;
 }
 
+interface DueReminderItem {
+  customerName: string;
+  phone: string;
+  type: string;
+  planName: string | null;
+  expiryDate?: string;
+}
+
 interface DueReminders {
   count: number;
-  reminders: { customerName: string; phone: string; type: string; planName: string | null }[];
+  reminders: DueReminderItem[];
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -83,12 +92,30 @@ export default function ExpiryNotificationsPage() {
     mutationFn: () => api.post("/whatsapp/reminders/trigger"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp-reminders"] });
-      toast.success("Due reminders sent");
+      toast.success("Due reminders processed");
     },
     onError: (err: { message?: string }) => {
-      toast.error(err.message || "Failed to send reminders");
+      toast.error(err.message || "Failed to trigger automatic reminders");
     },
   });
+
+  const handleOpenWhatsAppDue = (item: DueReminderItem) => {
+    const daysRemaining =
+      item.type === "EXPIRY_DAY" ? 0 : item.type === "DAYS_1" ? 1 : item.type === "DAYS_3" ? 3 : 5;
+    const expiryFormatted = item.expiryDate
+      ? new Date(item.expiryDate).toLocaleDateString("en-GB")
+      : "soon";
+
+    const text = buildExpiryReminderText({
+      customerName: item.customerName,
+      planName: item.planName,
+      daysRemaining,
+      expiryDate: expiryFormatted,
+    });
+
+    openWhatsAppWeb(item.phone, text);
+    toast.success(`Opening WhatsApp for ${item.customerName}...`);
+  };
 
   const reminders = data?.data || [];
   const totalPages = data ? Math.ceil(data.total / (data.limit || 1)) : 1;
@@ -104,9 +131,7 @@ export default function ExpiryNotificationsPage() {
             <span className="font-medium">
               {customer ? `${customer.firstName} ${customer.lastName}` : "—"}
             </span>
-            <span className="text-xs text-muted-foreground">
-              {customer?.phone}
-            </span>
+            <span className="text-xs text-muted-foreground">{customer?.phone}</span>
           </div>
         );
       },
@@ -114,9 +139,7 @@ export default function ExpiryNotificationsPage() {
     {
       accessorKey: "plan",
       header: "Plan",
-      cell: ({ row }) => (
-        <span>{row.original.subscription?.plan?.name || "—"}</span>
-      ),
+      cell: ({ row }) => <span>{row.original.subscription?.plan?.name || "—"}</span>,
     },
     {
       accessorKey: "reminderType",
@@ -145,43 +168,136 @@ export default function ExpiryNotificationsPage() {
           <span className="text-muted-foreground">—</span>
         ),
     },
+    {
+      id: "actions",
+      header: "Direct WhatsApp (Free)",
+      cell: ({ row }) => {
+        const customer = row.original.subscription?.customer;
+        const plan = row.original.subscription?.plan;
+        const expiryDate = row.original.subscription?.expiryDate
+          ? new Date(row.original.subscription.expiryDate).toLocaleDateString("en-GB")
+          : "";
+        if (!customer?.phone) return null;
+
+        const daysRemaining =
+          row.original.reminderType === "EXPIRY_DAY"
+            ? 0
+            : row.original.reminderType === "DAYS_1"
+            ? 1
+            : row.original.reminderType === "DAYS_3"
+            ? 3
+            : 5;
+
+        const text = buildExpiryReminderText({
+          customerName: `${customer.firstName} ${customer.lastName}`.trim(),
+          planName: plan?.name,
+          daysRemaining,
+          expiryDate,
+        });
+
+        return (
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 gap-1 text-xs text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200"
+            onClick={() => {
+              openWhatsAppWeb(customer.phone, text);
+              toast.success(`Opening WhatsApp for ${customer.firstName}...`);
+            }}
+          >
+            <MessageCircle className="h-3.5 w-3.5 text-green-600" />
+            Send in WhatsApp
+          </Button>
+        );
+      },
+    },
   ];
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Expiry Notifications"
-        description="Customers who receive a WhatsApp message when their plan is about to expire"
+        description="Customers who receive a reminder when their plan is about to expire (Free via WhatsApp Web or automated API)"
         actions={
-          <Button
-            onClick={() => sendDueMutation.mutate()}
-            disabled={sendDueMutation.isPending || !due?.count}
-          >
-            <Send className="me-2 h-4 w-4" />
-            Send Due Today
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              className="gap-1.5 border-green-200 text-green-700 hover:bg-green-50"
+              onClick={() => {
+                if (due?.reminders?.length) {
+                  due.reminders.forEach((r, idx) => {
+                    setTimeout(() => handleOpenWhatsAppDue(r), idx * 600);
+                  });
+                } else {
+                  toast.info("No due reminders right now");
+                }
+              }}
+              disabled={!due?.count}
+            >
+              <MessageCircle className="h-4 w-4 text-green-600" />
+              Open All Due in WhatsApp (Free)
+            </Button>
+            <Button
+              onClick={() => sendDueMutation.mutate()}
+              disabled={sendDueMutation.isPending || !due?.count}
+            >
+              <Send className="me-2 h-4 w-4" />
+              Auto-Send via API
+            </Button>
+          </div>
         }
       />
 
+      {/* Due reminders summary & one-click quick actions */}
       <Card>
-        <CardContent className="flex items-start gap-3 border-b p-4">
-          <BellRing className="mt-0.5 h-5 w-5 text-primary" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">
-              {due?.count ? `${due.count} reminder${due.count === 1 ? "" : "s"} due today` : "No reminders due today"}
-            </p>
-            {due?.count ? (
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {due.reminders
-                  .map((r) => `${r.customerName} (${r.planName || "no plan"})`)
-                  .join(", ")}
+        <CardContent className="p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <BellRing className="h-5 w-5" />
+            </div>
+            <div className="flex-1">
+              <p className="text-base font-semibold">
+                {due?.count
+                  ? `${due.count} customer reminder${due.count === 1 ? "" : "s"} due today`
+                  : "No reminders due today"}
               </p>
-            ) : (
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Customers will be notified automatically as their plan nears expiry.
+              <p className="text-xs text-muted-foreground">
+                {due?.count
+                  ? "Click 'Send in WhatsApp' next to any customer below to instantly open WhatsApp with the personalized reminder message pre-filled for free."
+                  : "Customers will appear here automatically when their plan is 5, 3, or 1 day(s) before expiry."}
               </p>
-            )}
+            </div>
           </div>
+
+          {due?.count ? (
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 pt-2 border-t">
+              {due.reminders.map((r, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-center justify-between rounded-lg border p-2.5 bg-muted/20"
+                >
+                  <div className="min-w-0 pr-2">
+                    <p className="text-xs font-semibold truncate">{r.customerName}</p>
+                    <p className="text-[11px] text-muted-foreground truncate">
+                      {r.planName || "Plan"} · {r.phone}
+                    </p>
+                    <span className="inline-block text-[10px] font-medium text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded mt-0.5">
+                      {TYPE_LABEL[r.type] || r.type}
+                    </span>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-8 gap-1 text-xs shrink-0 text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200"
+                    onClick={() => handleOpenWhatsAppDue(r)}
+                  >
+                    <MessageCircle className="h-3.5 w-3.5 text-green-600" />
+                    Send (Free)
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -191,44 +307,38 @@ export default function ExpiryNotificationsPage() {
             <div>
               <p className="text-sm font-medium">Reminder history</p>
               <p className="text-xs text-muted-foreground">
-                {data?.total ?? 0} reminders{isLoading ? "..." : ""}
+                {data?.total ?? 0} reminders recorded
               </p>
             </div>
             <div className="w-full sm:w-48">
-              <Label htmlFor="status-filter" className="mb-1 block text-xs font-medium text-muted-foreground">
+              <Label
+                htmlFor="status-filter"
+                className="mb-1 block text-xs font-medium text-muted-foreground"
+              >
                 Status
               </Label>
-              <Select value={status} onValueChange={(v) => { setStatus(v); setPage(1); }}>
-                <SelectTrigger id="status-filter" className="h-9 w-full">
-                  <SelectValue />
+              <Select value={status} onValueChange={(val) => { setStatus(val); setPage(1); }}>
+                <SelectTrigger id="status-filter">
+                  <SelectValue placeholder="All statuses" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="all">All</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="sent">Sent</SelectItem>
                   <SelectItem value="failed">Failed</SelectItem>
-                  <SelectItem value="skipped">Skipped</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </div>
 
-          {isLoading ? (
-            <LoadingState />
-          ) : error ? (
-            <ErrorState message={error.message} onRetry={() => refetch()} />
-          ) : reminders.length === 0 ? (
-            <EmptyState message="No reminders found with the current filters" />
-          ) : (
-            <DataTable
-              columns={columns}
-              data={reminders}
-              page={page}
-              totalPages={totalPages}
-              totalItems={data?.total}
-              onPageChange={setPage}
-            />
-          )}
+          <DataTable
+            columns={columns}
+            data={reminders}
+            totalItems={data?.total ?? 0}
+            page={page}
+            totalPages={totalPages}
+            onPageChange={setPage}
+          />
         </CardContent>
       </Card>
     </div>

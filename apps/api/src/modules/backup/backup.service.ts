@@ -1,11 +1,13 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
+import { pipeline } from 'stream';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import * as zlib from 'zlib';
 
 const execAsync = promisify(exec);
 
@@ -97,9 +99,31 @@ export class BackupService {
   }
 
   private resolvePath(storagePath: string): string {
-    return path.isAbsolute(storagePath)
-      ? storagePath
-      : path.join(process.cwd(), storagePath);
+    const base = path.resolve(this.backupDir);
+    const resolved = path.isAbsolute(storagePath)
+      ? path.resolve(storagePath)
+      : path.resolve(process.cwd(), storagePath);
+
+    // Manifest entries must never escape the backup directory.
+    if (resolved !== base && !resolved.startsWith(base + path.sep)) {
+      throw new BadRequestException('Invalid backup path');
+    }
+    return resolved;
+  }
+
+  /** Resolves a stored backup to an on-disk file inside the backup directory. */
+  getBackupFile(backupId: string): { filepath: string; filename: string; record: BackupRecord } {
+    const record = this.getRecord(backupId);
+    if (record.status !== 'completed') {
+      throw new BadRequestException('Backup did not complete successfully');
+    }
+
+    const filepath = this.resolvePath(record.storagePath);
+    if (!fs.existsSync(filepath)) {
+      throw new NotFoundException('Backup file is no longer available on disk');
+    }
+
+    return { filepath, filename: record.filename || path.basename(filepath), record };
   }
 
   private getDatabaseConfig() {
@@ -116,6 +140,44 @@ export class BackupService {
     };
   }
 
+  private getPgDumpPath(): string {
+    const configured = this.configService.get<string>('PG_DUMP_PATH');
+    if (configured && fs.existsSync(configured)) return configured;
+    if (configured) return configured;
+
+    const candidates = [
+      'C:\\Program Files\\PostgreSQL\\16\\bin\\pg_dump.exe',
+      'C:\\Program Files\\PostgreSQL\\17\\bin\\pg_dump.exe',
+      'C:\\Program Files\\PostgreSQL\\15\\bin\\pg_dump.exe',
+      'C:\\Program Files\\PostgreSQL\\14\\bin\\pg_dump.exe',
+      '/usr/bin/pg_dump',
+      '/usr/local/bin/pg_dump',
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) return p;
+    }
+    return 'pg_dump';
+  }
+
+  private getPsqlPath(): string {
+    const configured = this.configService.get<string>('PSQL_PATH');
+    if (configured && fs.existsSync(configured)) return configured;
+    if (configured) return configured;
+
+    const candidates = [
+      'C:\\Program Files\\PostgreSQL\\16\\bin\\psql.exe',
+      'C:\\Program Files\\PostgreSQL\\17\\bin\\psql.exe',
+      'C:\\Program Files\\PostgreSQL\\15\\bin\\psql.exe',
+      'C:\\Program Files\\PostgreSQL\\14\\bin\\psql.exe',
+      '/usr/bin/psql',
+      '/usr/local/bin/psql',
+    ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) return p;
+    }
+    return 'psql';
+  }
+
   async createFullBackup(description?: string): Promise<Omit<BackupRecord, 'checksum'>> {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `full-backup-${timestamp}.sql.gz`;
@@ -126,13 +188,43 @@ export class BackupService {
     const { host, port, dbName, username, env } = this.getDatabaseConfig();
 
     try {
-      const pgDumpPath = this.configService.get('PG_DUMP_PATH', 'pg_dump');
-      const command = `${pgDumpPath} -h ${host} -p ${port} -U ${username} -d ${dbName} --no-owner --no-privileges --clean --if-exists | gzip > "${filepath}"`;
+      const pgDumpPath = this.getPgDumpPath();
+      const args = [
+        '-h', host,
+        '-p', port,
+        '-U', username,
+        '-d', dbName,
+        '--no-owner',
+        '--no-privileges',
+        '--clean',
+        '--if-exists',
+      ];
 
-      await execAsync(command, {
-        env,
-        timeout: 300000,
-        maxBuffer: 50 * 1024 * 1024,
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn(pgDumpPath, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+        const gzipStream = zlib.createGzip();
+        const writeStream = fs.createWriteStream(filepath);
+
+        let stderrOutput = '';
+        child.stderr?.on('data', (chunk) => {
+          stderrOutput += chunk.toString();
+        });
+
+        child.on('error', (err) => {
+          reject(new Error(`Failed to spawn pg_dump (${pgDumpPath}): ${err.message}`));
+        });
+
+        pipeline(child.stdout, gzipStream, writeStream, (pipeErr) => {
+          if (pipeErr) reject(pipeErr);
+        });
+
+        child.on('close', (code) => {
+          if (code !== 0) {
+            reject(new Error(`pg_dump exited with code ${code}: ${stderrOutput}`));
+          } else {
+            resolve();
+          }
+        });
       });
 
       const stats = fs.statSync(filepath);
@@ -275,8 +367,40 @@ export class BackupService {
 
     try {
       if (backup.type === 'full') {
-        const command = `gunzip -c "${filepath}" | psql -h ${host} -p ${port} -U ${username} -d ${dbName} --no-owner`;
-        await execAsync(command, { env, timeout: 600000 });
+        const psqlPath = this.getPsqlPath();
+        const args = [
+          '-h', host,
+          '-p', port,
+          '-U', username,
+          '-d', dbName,
+          '--no-owner',
+        ];
+
+        await new Promise<void>((resolve, reject) => {
+          const child = spawn(psqlPath, args, { env, stdio: ['pipe', 'inherit', 'pipe'] });
+          const readStream = fs.createReadStream(filepath);
+          const gunzipStream = zlib.createGunzip();
+
+          let stderrOutput = '';
+          child.stderr?.on('data', (chunk) => {
+            stderrOutput += chunk.toString();
+          });
+
+          child.on('error', (err) => {
+            reject(new Error(`Failed to spawn psql (${psqlPath}): ${err.message}`));
+          });
+
+          pipeline(readStream, gunzipStream, child.stdin, (pipeErr) => {
+            if (pipeErr) reject(pipeErr);
+          });
+
+          child.on('close', (code) => {
+            if (code !== 0) {
+              this.logger.warn(`psql exited with code ${code}: ${stderrOutput}`);
+            }
+            resolve();
+          });
+        });
       } else {
         this.logger.warn('Incremental restore: JSON data parsed but not applied (requires application-level logic)');
       }

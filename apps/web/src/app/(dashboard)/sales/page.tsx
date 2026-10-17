@@ -90,7 +90,7 @@ export default function SalesPage() {
       accessorKey: "saleNumber",
       header: "Sale #",
       cell: ({ row }) => (
-        <Link href={`/sales/${row.original.id}`} className="font-mono text-sm font-medium text-primary hover:underline">
+        <Link href={`/sales/detail?id=${encodeURIComponent(row.original.id)}`} className="font-mono text-sm font-medium text-primary hover:underline">
           {row.original.saleNumber}
         </Link>
       ),
@@ -259,7 +259,7 @@ export default function SalesPage() {
           }> = [
             {
               label: "View",
-              onClick: () => router.push(`/sales/${row.id}`),
+              onClick: () => router.push(`/sales/detail?id=${encodeURIComponent(row.id)}`),
               icon: <Eye className="h-4 w-4" />,
             },
           ];

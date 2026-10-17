@@ -45,6 +45,7 @@ import {
   ChartColumn,
   Settings,
   History,
+  PlugZap,
 } from "lucide-react";
 import { getInitials } from "@/lib/utils";
 
@@ -111,6 +112,7 @@ const navigation: NavGroup[] = [
   {
     label: "WhatsApp",
     items: [
+      { label: "Connection & Setup", href: "/whatsapp/connect", icon: PlugZap },
       { label: "Templates", href: "/whatsapp/templates", icon: MessageSquare },
       { label: "Messages", href: "/whatsapp/messages", icon: MessageCircle },
       { label: "Expiry Notifications", href: "/whatsapp/reminders", icon: BellRing },
@@ -130,11 +132,21 @@ interface SidebarNavProps {
 
 function SidebarNav({ collapsed }: SidebarNavProps) {
   const pathname = usePathname();
+
+  /**
+   * Matches a nav href against the current path on segment boundaries so
+   * `/sales` does not stay highlighted while on `/sales-archive`, and a parent
+   * link stays active for its nested routes (`/customers/123`).
+   */
+  const isActive = (href: string) => {
+    const target = href.split("?")[0].replace(/\/+$/, "") || "/";
+    if (target === "/") return pathname === "/";
+    return pathname === target || pathname.startsWith(`${target}/`);
+  };
+
   const [openItems, setOpenItems] = React.useState<string[]>(() => {
     const activeGroup = navigation.find((group) =>
-      group.items.some((item) =>
-        item.children?.some((child) => child.href && pathname.startsWith(child.href.split("?")[0]))
-      )
+      group.items.some((item) => item.children?.some((child) => child.href && isActive(child.href)))
     );
     return activeGroup ? [activeGroup.label] : [];
   });
@@ -144,8 +156,6 @@ function SidebarNav({ collapsed }: SidebarNavProps) {
       prev.includes(label) ? prev.filter((l) => l !== label) : [...prev, label]
     );
   };
-
-  const isActive = (href: string) => pathname.startsWith(href.split("?")[0]);
 
   return (
     <nav className="space-y-6 px-2 py-4">

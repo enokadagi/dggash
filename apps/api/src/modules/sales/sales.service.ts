@@ -110,6 +110,9 @@ export class SalesService {
     const sale = await this.prisma.$transaction(async (tx) => {
       for (const line of lines) {
         const product = productMap.get(line.productId)!;
+        // Atomic conditional decrement: the `gte` guard is re-evaluated while
+        // holding the row lock, so concurrent sales cannot drive stock below
+        // zero or oversell the same units.
         const result = await tx.product.updateMany({
           where: { id: line.productId, currentStock: { gte: line.quantity }, deletedAt: null },
           data: { currentStock: { decrement: line.quantity } },
@@ -161,15 +164,22 @@ export class SalesService {
       }
 
       for (const line of lines) {
-        const product = productMap.get(line.productId)!;
+        // Re-read after the decrement so the movement records the stock levels
+        // that actually resulted, not the pre-transaction snapshot (which is
+        // stale when other sales are committing concurrently).
+        const updatedProduct = await tx.product.findUnique({
+          where: { id: line.productId },
+          select: { currentStock: true },
+        });
+        const newStock = updatedProduct?.currentStock ?? 0;
         await tx.stockMovement.create({
           data: {
             productId: line.productId,
             userId: userId || null,
             movementType: 'SALE',
             quantity: line.quantity,
-            previousStock: product.currentStock,
-            newStock: product.currentStock - line.quantity,
+            previousStock: newStock + line.quantity,
+            newStock,
             reference: saleNumber,
             notes: `Sale ${saleNumber}`,
           },
@@ -205,30 +215,44 @@ export class SalesService {
       const sale = await tx.sale.findUnique({ where: { id }, include: { items: true } });
       if (!sale) throw new NotFoundException('Sale not found');
       if (sale.status !== 'COMPLETED') throw new BadRequestException(`Sale cannot be refunded: current status is "${sale.status}"`);
+
+      // Claim the sale first with a conditional update. Two concurrent refunds
+      // would both read "COMPLETED" above; only one can flip the status, so the
+      // loser is rejected here instead of restoring the stock twice.
+      const claimed = await tx.sale.updateMany({
+        where: { id, status: 'COMPLETED' },
+        data: { status: 'REFUNDED' },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException('Sale cannot be refunded: it was already refunded');
+      }
+
       for (const item of sale.items) {
-        const product = await tx.product.findUnique({ where: { id: item.productId } });
-        if (!product) throw new NotFoundException('Product not found');
         await tx.product.updateMany({
           where: { id: item.productId, deletedAt: null },
           data: { currentStock: { increment: item.quantity } },
         });
+        const updatedProduct = await tx.product.findUnique({
+          where: { id: item.productId },
+          select: { currentStock: true },
+        });
+        const newStock = updatedProduct?.currentStock ?? 0;
         await tx.stockMovement.create({
           data: {
             productId: item.productId,
             userId: userId || null,
             movementType: 'RETURN',
             quantity: item.quantity,
-            previousStock: product.currentStock,
-            newStock: product.currentStock + item.quantity,
+            previousStock: newStock - item.quantity,
+            newStock,
             reference: `refund-${sale.saleNumber}`,
             notes: reason || `Refund of sale ${sale.saleNumber}`,
           },
         });
       }
 
-      return tx.sale.update({
+      return tx.sale.findUniqueOrThrow({
         where: { id },
-        data: { status: 'REFUNDED' },
         include: { customer: true, items: { include: { product: true } } },
       });
     });
@@ -249,30 +273,42 @@ export class SalesService {
       const sale = await tx.sale.findUnique({ where: { id }, include: { items: true } });
       if (!sale) throw new NotFoundException('Sale not found');
       if (sale.status !== 'COMPLETED') throw new BadRequestException(`Sale cannot be cancelled: current status is "${sale.status}"`);
+
+      // Same atomic claim as refund: prevents two concurrent cancels from both
+      // restoring the stock.
+      const claimed = await tx.sale.updateMany({
+        where: { id, status: 'COMPLETED' },
+        data: { status: 'CANCELLED' },
+      });
+      if (claimed.count !== 1) {
+        throw new BadRequestException('Sale cannot be cancelled: it was already cancelled or refunded');
+      }
+
       for (const item of sale.items) {
-        const product = await tx.product.findUnique({ where: { id: item.productId } });
         await tx.product.updateMany({
           where: { id: item.productId, deletedAt: null },
           data: { currentStock: { increment: item.quantity } },
         });
+        const updatedProduct = await tx.product.findUnique({
+          where: { id: item.productId },
+          select: { currentStock: true },
+        });
+        const newStock = updatedProduct?.currentStock ?? 0;
         await tx.stockMovement.create({
           data: {
             productId: item.productId,
             userId: userId || null,
             movementType: 'RETURN',
             quantity: item.quantity,
-            previousStock: product.currentStock,
-            newStock: product.currentStock + item.quantity,
+            previousStock: newStock - item.quantity,
+            newStock,
             reference: `cancel-${sale.saleNumber}`,
             notes: reason || `Cancellation of sale ${sale.saleNumber}`,
           },
         });
       }
 
-      return tx.sale.update({
-        where: { id },
-        data: { status: 'CANCELLED' },
-      });
+      return tx.sale.findUniqueOrThrow({ where: { id } });
     });
 
     await this.auditService.log({

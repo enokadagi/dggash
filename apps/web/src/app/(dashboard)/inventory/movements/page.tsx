@@ -54,6 +54,7 @@ export default function InventoryMovementsPage() {
       api.get<{ data: StockMovement[]; total: number; page: number; limit: number }>("/inventory/movements", {
         page,
         limit,
+        search: debouncedSearch || undefined,
       }),
   });
 

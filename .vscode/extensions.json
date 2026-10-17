@@ -1,5 +1,7 @@
 {
     "recommendations": [
-        "augment.vscode-augment"
+        "augment.vscode-augment",
+        "hostinger-official.hostinger-connector",
+        "utiltools.sftp-sync-utiltools"
     ]
 }

@@ -31,10 +31,16 @@ export class WhatsAppController {
   @Get('status')
   @ApiOperation({ summary: 'Check WhatsApp API configuration status' })
   @ApiResponse({ status: 200, description: 'Configuration status returned' })
-  getStatus() {
-    return {
-      configured: this.whatsappService.isConfigured(),
-    };
+  async getStatus() {
+    return this.whatsappService.getStatusDetails();
+  }
+
+  @Post('test-connection')
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Test WhatsApp Cloud API connection' })
+  @ApiResponse({ status: 200, description: 'Connection test outcome' })
+  async testConnection() {
+    return this.whatsappService.testConnection();
   }
 
   @Post('send')
@@ -74,6 +80,11 @@ export class WhatsAppController {
 
   @Post('templates')
   @HttpCode(HttpStatus.CREATED)
+  // Writes `company_settings` rows. Previously inherited the class-level
+  // ADMIN+STAFF permission while `PATCH /settings/:key` was ADMIN-only, which
+  // meant a cashier could write company settings through this route and inject
+  // arbitrary setting keys. Kept in step with /settings: ADMIN only.
+  @Roles('ADMIN')
   @ApiOperation({ summary: 'Create or update a WhatsApp message template (company setting)' })
   @ApiResponse({ status: 201, description: 'Template saved' })
   @ApiResponse({ status: 400, description: 'Invalid template data' })
@@ -174,7 +185,17 @@ export class WhatsAppController {
     @Query('hub.challenge') challenge: string,
     @Res() res: Response,
   ) {
-    const verifyToken = this.config.get('WHATSAPP_WEBHOOK_VERIFY_TOKEN', 'AWIK NET-webhook-verify');
+    // Fail closed. This used to fall back to a hard-coded default token, so a
+    // deployment that left WHATSAPP_WEBHOOK_VERIFY_TOKEN empty silently used a
+    // publicly guessable secret. An unset token must deny verification instead.
+    const verifyToken = this.config.get<string>('WHATSAPP_WEBHOOK_VERIFY_TOKEN');
+    if (!verifyToken) {
+      this.logger.error(
+        'WHATSAPP_WEBHOOK_VERIFY_TOKEN is not configured - refusing webhook verification',
+      );
+      res.status(403).send('Forbidden');
+      return;
+    }
 
     if (mode === 'subscribe' && token === verifyToken) {
       res.status(200).send(challenge);

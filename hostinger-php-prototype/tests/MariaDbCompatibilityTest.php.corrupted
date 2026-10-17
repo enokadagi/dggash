@@ -1,0 +1,7 @@
+<?php
+    fwrite(STDOUT, "DEBUG: HTTP sessions in DB $databaseName: " . count($httpSessionRows) . PHP_EOL);
+    foreach ($httpSessionRows as $session) {
+        fwrite(STDOUT, "DEBUG: Session ID={$session[""ID""]} USER={$session[""USER""]} DB={$session[""DB""]} INFO=" . ($session[""INFO""] ?? ""null"") . "");
+    }
+
+

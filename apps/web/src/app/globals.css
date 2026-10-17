@@ -218,6 +218,45 @@
   display: none;
 }
 
+/* ──────────────────────────────────────────────────────────────────────────
+   A4 documents (invoices / company documents)
+   `@page` is the authoritative page definition: it makes the browser's print
+   preview and the printer both emit a true A4 (210mm x 297mm) sheet.
+   ────────────────────────────────────────────────────────────────────────── */
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  html,
+  body {
+    background: #fff !important;
+  }
+
+  /* A4 print isolation.
+     `InvoicePrintButton` sets body[data-printing="a4"] and mounts the document
+     in a portal as a direct child of <body>. Everything except that container
+     is hidden, so the printed output never contains navigation, buttons or
+     other dashboard chrome. */
+  body[data-printing="a4"] > *:not([data-a4-print-root]) {
+    display: none !important;
+  }
+
+  body[data-printing="a4"] > [data-a4-print-root] {
+    position: static !important;
+    inset: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    width: auto !important;
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+}
+
+
 .sr-only {
   position: absolute;
   width: 1px;

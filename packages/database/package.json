@@ -13,6 +13,7 @@
     "migrate:prod": "prisma migrate deploy",
     "studio": "prisma studio",
     "seed": "prisma db seed",
+    "bootstrap": "node prisma/bootstrap.js",
     "build": "prisma generate",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

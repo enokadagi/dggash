@@ -22,6 +22,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
+    // A refresh token must never be usable as an access token, even if the
+    // signing secrets are ever identical or misconfigured.
+    if (payload?.type && payload.type !== 'access') {
+      throw new UnauthorizedException('Invalid access token');
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       select: {

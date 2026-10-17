@@ -1,0 +1,24 @@
+1:"$Sreact.fragment"
+2:I[47257,["/_next/static/chunks/1mgh327j7cw8d.js","/_next/static/chunks/1vu5-xeb0vuwz.js","/_next/static/chunks/1o8sz_fayvphv.js"],"ClientPageRoot"]
+3:I[39798,["/_next/static/chunks/1mgh327j7cw8d.js","/_next/static/chunks/1vu5-xeb0vuwz.js","/_next/static/chunks/1o8sz_fayvphv.js","/_next/static/chunks/02j5l-htjgxac.js"],"default"]
+6:I[97367,["/_next/static/chunks/1mgh327j7cw8d.js","/_next/static/chunks/1vu5-xeb0vuwz.js","/_next/static/chunks/1o8sz_fayvphv.js"],"OutletBoundary"]
+7:"$Sreact.suspense"
+b:I[97367,["/_next/static/chunks/1mgh327j7cw8d.js","/_next/static/chunks/1vu5-xeb0vuwz.js","/_next/static/chunks/1o8sz_fayvphv.js"],"ViewportBoundary"]
+c:I[97367,["/_next/static/chunks/1mgh327j7cw8d.js","/_next/static/chunks/1vu5-xeb0vuwz.js","/_next/static/chunks/1o8sz_fayvphv.js"],"MetadataBoundary"]
+e:I[42865,["/_next/static/chunks/1mgh327j7cw8d.js","/_next/static/chunks/1vu5-xeb0vuwz.js","/_next/static/chunks/1o8sz_fayvphv.js"],"Providers"]
+f:I[39756,["/_next/static/chunks/1mgh327j7cw8d.js","/_next/static/chunks/1vu5-xeb0vuwz.js","/_next/static/chunks/1o8sz_fayvphv.js"],"default"]
+10:I[37457,["/_next/static/chunks/1mgh327j7cw8d.js","/_next/static/chunks/1vu5-xeb0vuwz.js","/_next/static/chunks/1o8sz_fayvphv.js"],"default"]
+11:I[22016,["/_next/static/chunks/1mgh327j7cw8d.js","/_next/static/chunks/1vu5-xeb0vuwz.js","/_next/static/chunks/1o8sz_fayvphv.js","/_next/static/chunks/22i43cg4l4-dq.js"],""]
+:HL["/_next/static/chunks/3u11zay3pd9um.css","style"]
+a:X
+0:{"buildId":"R984Zeuq0nRkB5pfSMNa3","data":[{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"Component":"$3","serverProvidedParams":{"searchParams":{},"params":{},"promises":["$@4","$@5"]}}],[["$","script","script-0",{"src":"/_next/static/chunks/02j5l-htjgxac.js","async":true}]],["$","$L6",null,{"children":["$","$7",null,{"name":"Next.MetadataOutlet","children":"$@8"}]}]]}],"isPartial":"$@9","staleTime":"$a","varyParams":null},{"rsc":["$","$1","h",{"children":[null,["$","$Lb",null,{"children":[["$","meta","0",{"charSet":"utf-8"}],["$","meta","1",{"name":"viewport","content":"width=device-width, initial-scale=1"}]]}],["$","div",null,{"hidden":true,"children":["$","$Lc",null,{"children":["$","$7",null,{"name":"Next.Metadata","children":[["$","title","0",{"children":"AWIK NET - ISP Management Platform"}],["$","meta","1",{"name":"description","content":"Complete ISP management solution for customer, billing, network, and operations management"}]]}]}]}],["$","meta",null,{"name":"next-size-adjust","content":""}]]}],"isPartial":"$@d","staleTime":"$a","varyParams":null},{"rsc":["$","$1","c",{"children":[[["$","link","0",{"rel":"stylesheet","href":"/_next/static/chunks/3u11zay3pd9um.css","precedence":"next"}],["$","script","script-0",{"src":"/_next/static/chunks/1mgh327j7cw8d.js","async":true}],["$","script","script-1",{"src":"/_next/static/chunks/1vu5-xeb0vuwz.js","async":true}],["$","script","script-2",{"src":"/_next/static/chunks/1o8sz_fayvphv.js","async":true}]],["$","html",null,{"lang":"en","suppressHydrationWarning":true,"children":["$","body",null,{"className":"inter_b2991b2-module__9mH_6q__variable font-sans antialiased","children":["$","$Le",null,{"children":["$","$Lf",null,{"parallelRouterKey":"children","template":["$","$L10",null,{}],"notFound":[["$","div",null,{"className":"flex flex-col items-center justify-center min-h-screen gap-4","children":[["$","h2",null,{"className":"text-4xl font-bold","children":"404"}],["$","p",null,{"className":"text-muted-foreground","children":"Page not found"}],["$","$L11",null,{"href":"/dashboard","children":["$","button",null,{"className":"inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2","children":"Go to Dashboard"}]}]]}],[]]}]}]}]}]]}],"isPartial":"$@12","staleTime":"$a","varyParams":null}],"isUpgradeableISRFallback":false,"a":"$@13","rootVaryParams":null,"needsRuntimeRequest":"$@14"}
+4:{}
+5:"$0:data:0:rsc:props:children:0:props:serverProvidedParams:params"
+8:null
+a:300
+14:true
+a:C
+13:0
+d:"$undefined"
+12:"$undefined"
+9:"$undefined"

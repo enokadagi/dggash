@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { CreateCustomerDto } from './dto/create-customer.dto';
 import { UpdateCustomerDto } from './dto/update-customer.dto';
 import { QueryCustomerDto } from './dto/query-customer.dto';
+import { safeOrderBy } from '../../common/utils/sort';
 
 @Injectable()
 export class CustomersService {
@@ -32,7 +33,7 @@ export class CustomersService {
     const [data, total] = await this.prisma.$transaction([
       this.prisma.customer.findMany({
         where,
-        orderBy: { [query.sortBy || 'createdAt']: query.sortOrder || 'desc' },
+        orderBy: safeOrderBy(query.sortBy, ['firstName', 'lastName', 'phone', 'email', 'status', 'createdAt', 'updatedAt'] as const, 'createdAt', query.sortOrder),
         skip: (page - 1) * limit,
         take: limit,
         include: {

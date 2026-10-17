@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { PrismaService } from '../../common/prisma/prisma.service';
 
 export interface WhatsAppApiResponse {
   messaging_product: string;
@@ -26,19 +27,107 @@ export interface SendResult {
 @Injectable()
 export class WhatsAppCloudApiService {
   private readonly logger = new Logger(WhatsAppCloudApiService.name);
-  private readonly apiUrl: string;
-  private readonly phoneNumberId: string;
-  private readonly accessToken: string;
+  private apiUrl: string;
+  private phoneNumberId: string;
+  private accessToken: string;
 
-  constructor(private config: ConfigService) {
+  constructor(
+    private config: ConfigService,
+    private prisma: PrismaService,
+  ) {
     const apiVersion = this.config.get('WHATSAPP_API_VERSION', 'v18.0');
     this.apiUrl = this.config.get('WHATSAPP_API_URL', `https://graph.facebook.com/${apiVersion}`);
     this.phoneNumberId = this.config.get('WHATSAPP_PHONE_NUMBER_ID', '');
     this.accessToken = this.config.get('WHATSAPP_API_TOKEN') || this.config.get('WHATSAPP_ACCESS_TOKEN', '');
+    void this.reloadConfig();
+  }
+
+  async reloadConfig(): Promise<void> {
+    try {
+      const settings = await this.prisma.companySetting.findMany({
+        where: {
+          key: {
+            in: [
+              'whatsapp.phoneNumberId',
+              'whatsapp.phone_number_id',
+              'whatsapp.accessToken',
+              'whatsapp.access_token',
+              'whatsapp.apiUrl',
+            ],
+          },
+        },
+      });
+      for (const s of settings) {
+        if ((s.key === 'whatsapp.phoneNumberId' || s.key === 'whatsapp.phone_number_id') && s.value) {
+          this.phoneNumberId = s.value.trim();
+        }
+        if ((s.key === 'whatsapp.accessToken' || s.key === 'whatsapp.access_token') && s.value) {
+          this.accessToken = s.value.trim();
+        }
+        if (s.key === 'whatsapp.apiUrl' && s.value) {
+          this.apiUrl = s.value.trim();
+        }
+      }
+    } catch {
+      // Non-fatal, use env config
+    }
+  }
+
+  async getActiveConfig(): Promise<{ phoneNumberId: string; accessToken: string; apiUrl: string }> {
+    await this.reloadConfig();
+    return {
+      phoneNumberId: this.phoneNumberId || this.config.get('WHATSAPP_PHONE_NUMBER_ID', ''),
+      accessToken:
+        this.accessToken ||
+        this.config.get('WHATSAPP_API_TOKEN') ||
+        this.config.get('WHATSAPP_ACCESS_TOKEN', ''),
+      apiUrl: this.apiUrl,
+    };
   }
 
   isConfigured(): boolean {
     return !!(this.phoneNumberId && this.accessToken);
+  }
+
+  async testConnection(): Promise<{ success: boolean; message: string; details?: any }> {
+    const conf = await this.getActiveConfig();
+    if (!conf.phoneNumberId || !conf.accessToken) {
+      return {
+        success: false,
+        message: 'Phone Number ID and Access Token are required to test WhatsApp connection.',
+      };
+    }
+
+    try {
+      const url = `${conf.apiUrl}/${conf.phoneNumberId}?fields=verified_name,display_phone_number,quality_rating,code_verification_status`;
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${conf.accessToken}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const body = (await response.json()) as any;
+      if (!response.ok) {
+        const errorMsg = body.error?.message || `HTTP ${response.status}`;
+        return {
+          success: false,
+          message: `Meta API error: ${errorMsg}`,
+          details: body.error,
+        };
+      }
+
+      return {
+        success: true,
+        message: `Connected successfully to WhatsApp Cloud API. Verified Name: "${body.verified_name || 'AWIK NET'}" (${body.display_phone_number || conf.phoneNumberId})`,
+        details: body,
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `Network error connecting to Meta API: ${err.message}`,
+      };
+    }
   }
 
   private get headers(): Record<string, string> {
@@ -125,18 +214,24 @@ export class WhatsAppCloudApiService {
   }
 
   async sendTextMessage(to: string, text: string): Promise<SendResult> {
-    if (!this.isConfigured()) {
+    const conf = await this.getActiveConfig();
+    if (!conf.phoneNumberId || !conf.accessToken) {
       return { success: false, error: 'WhatsApp API not configured' };
     }
 
     const normalizedPhone = this.normalizePhone(to);
+    const url = `${conf.apiUrl}/${conf.phoneNumberId}/messages`;
+    const headers = {
+      'Authorization': `Bearer ${conf.accessToken}`,
+      'Content-Type': 'application/json',
+    };
 
     this.logger.log(`Sending text message to ${normalizedPhone}`);
 
     try {
-      const result = await this.request<WhatsAppApiResponse>(this.messagesUrl, {
+      const result = await this.request<WhatsAppApiResponse>(url, {
         method: 'POST',
-        headers: this.headers,
+        headers,
         body: JSON.stringify({
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
@@ -149,7 +244,7 @@ export class WhatsAppCloudApiService {
       const messageId = result.messages?.[0]?.id;
       this.logger.log(`Message sent successfully. ID: ${messageId}`);
       return { success: true, messageId };
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Failed to send text message to ${normalizedPhone}: ${error.message}`);
       return { success: false, error: error.message };
     }
@@ -161,11 +256,17 @@ export class WhatsAppCloudApiService {
     language: string,
     variables?: Record<string, string>,
   ): Promise<SendResult> {
-    if (!this.isConfigured()) {
+    const conf = await this.getActiveConfig();
+    if (!conf.phoneNumberId || !conf.accessToken) {
       return { success: false, error: 'WhatsApp API not configured' };
     }
 
     const normalizedPhone = this.normalizePhone(to);
+    const url = `${conf.apiUrl}/${conf.phoneNumberId}/messages`;
+    const headers = {
+      'Authorization': `Bearer ${conf.accessToken}`,
+      'Content-Type': 'application/json',
+    };
 
     this.logger.log(`Sending template message "${templateName}" to ${normalizedPhone}`);
 
@@ -185,9 +286,9 @@ export class WhatsAppCloudApiService {
     }
 
     try {
-      const result = await this.request<WhatsAppApiResponse>(this.messagesUrl, {
+      const result = await this.request<WhatsAppApiResponse>(url, {
         method: 'POST',
-        headers: this.headers,
+        headers,
         body: JSON.stringify({
           messaging_product: 'whatsapp',
           recipient_type: 'individual',

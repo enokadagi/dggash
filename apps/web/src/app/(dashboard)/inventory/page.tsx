@@ -2,10 +2,11 @@
 
 import * as React from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Package, Layers, DollarSign, AlertTriangle, PackageX, PackagePlus, Plus } from "lucide-react";
-import { api } from "@/lib/api";
+import { Package, Layers, DollarSign, AlertTriangle, PackageX, PackagePlus, Plus, Pencil, Printer } from "lucide-react";
+import { toast } from "sonner";
 import { useProducts, useInventorySummary, useRestockProduct, type Product } from "@/hooks/api/use-products";
+import { ProductFormDialog } from "@/components/inventory/product-form-dialog";
+import { PrintLabelButton, DownloadQrButton, ProductLabel } from "@/components/barcode/product-label";
 import { usePagination } from "@/hooks/use-pagination";
 import { useDebounce } from "@/hooks/use-debounce";
 import { PageHeader } from "@/components/ui/page-header";
@@ -33,12 +34,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatCurrency } from "@/lib/utils";
-import { toast } from "sonner";
-
-interface InventoryCategory {
-  id: string;
-  name: string;
-}
 
 function StockBadge({ product }: { product: Product }) {
   if (product.currentStock <= 0) {
@@ -141,6 +136,64 @@ function RestockDialog({
   );
 }
 
+function LabelDialog({
+  product,
+  onOpenChange,
+}: {
+  product: Product | null;
+  onOpenChange: (open: boolean) => void;
+}) {
+  if (!product) {
+    return null;
+  }
+
+  const data = {
+    id: product.id,
+    sku: product.sku,
+    barcode: product.barcode ?? null,
+    name: product.name,
+    price: Number(product.sellingPrice),
+    currency: product.currency,
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onOpenChange(false); }}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Print label</DialogTitle>
+          <DialogDescription>
+            Shelf label for {product.name}. Choose “Save as PDF” in the print dialog to download.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex flex-col items-center gap-3">
+          <ProductLabel data={data} />
+          <div className="flex flex-wrap justify-center gap-2">
+            <PrintLabelButton data={data} onError={(message) => toast.error(message)} />
+            <PrintLabelButton
+              data={data}
+              copies={12}
+              variant="outline"
+              onError={(message) => toast.error(message)}
+            />
+            <DownloadQrButton data={data} onError={(message) => toast.error(message)} />
+          </div>
+          <p className="text-center text-[11px] text-muted-foreground">
+            Scanning the QR or barcode at the point of sale adds this product to the cart
+            instantly.
+          </p>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function AddProductDialog({
   open,
   onOpenChange,
@@ -148,75 +201,7 @@ function AddProductDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const queryClient = useQueryClient();
-  const { data: categories = [] } = useQuery({
-    queryKey: ["inventory", "categories"],
-    queryFn: () => api.get<InventoryCategory[]>("/inventory/categories"),
-    enabled: open,
-  });
-  const [form, setForm] = React.useState({
-    name: "",
-    sku: "",
-    barcode: "",
-    categoryId: "",
-    purchasePrice: "",
-    sellingPrice: "",
-    initialStock: "0",
-    minStock: "0",
-    unit: "piece",
-    description: "",
-  });
-
-  const createMutation = useMutation({
-    mutationFn: () => api.post("/products", {
-      name: form.name.trim(),
-      sku: form.sku.trim(),
-      barcode: form.barcode.trim() || undefined,
-      categoryId: form.categoryId,
-      purchasePrice: Number(form.purchasePrice),
-      sellingPrice: Number(form.sellingPrice),
-      initialStock: Number(form.initialStock),
-      minStock: Number(form.minStock),
-      unit: form.unit.trim() || "piece",
-      description: form.description.trim() || undefined,
-    }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["products"] });
-      queryClient.invalidateQueries({ queryKey: ["inventory", "summary"] });
-      toast.success("Product created successfully");
-      onOpenChange(false);
-      setForm({ name: "", sku: "", barcode: "", categoryId: "", purchasePrice: "", sellingPrice: "", initialStock: "0", minStock: "0", unit: "piece", description: "" });
-    },
-    onError: (error: { message?: string }) => toast.error(error.message || "Failed to create product"),
-  });
-
-  const update = (field: keyof typeof form) => (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setForm((current) => ({ ...current, [field]: event.target.value }));
-  const canSave = form.name.trim() && form.sku.trim() && form.categoryId && form.purchasePrice !== "" && form.sellingPrice !== "";
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Add Product</DialogTitle>
-          <DialogDescription>Create a product with a SKU and barcode that can be read by a USB scanner.</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="space-y-1.5"><Label htmlFor="product-name">Product name</Label><Input id="product-name" value={form.name} onChange={update("name")} /></div>
-          <div className="space-y-1.5"><Label htmlFor="product-sku">SKU</Label><Input id="product-sku" placeholder="TEST-ROUTER-001" value={form.sku} onChange={update("sku")} /></div>
-          <div className="space-y-1.5"><Label htmlFor="product-barcode">Barcode / QR value</Label><Input id="product-barcode" placeholder="Scan or type barcode" value={form.barcode} onChange={update("barcode")} /></div>
-          <div className="space-y-1.5"><Label htmlFor="product-category">Category</Label><Select value={form.categoryId} onValueChange={(value) => setForm((current) => ({ ...current, categoryId: value }))}><SelectTrigger id="product-category"><SelectValue placeholder="Select category" /></SelectTrigger><SelectContent>{categories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent></Select></div>
-          <div className="space-y-1.5"><Label htmlFor="purchase-price">Purchase price</Label><Input id="purchase-price" type="number" min="0" step="0.01" value={form.purchasePrice} onChange={update("purchasePrice")} /></div>
-          <div className="space-y-1.5"><Label htmlFor="selling-price">Selling price</Label><Input id="selling-price" type="number" min="0" step="0.01" value={form.sellingPrice} onChange={update("sellingPrice")} /></div>
-          <div className="space-y-1.5"><Label htmlFor="initial-stock">Current stock</Label><Input id="initial-stock" type="number" min="0" value={form.initialStock} onChange={update("initialStock")} /></div>
-          <div className="space-y-1.5"><Label htmlFor="min-stock">Minimum stock</Label><Input id="min-stock" type="number" min="0" value={form.minStock} onChange={update("minStock")} /></div>
-          <div className="space-y-1.5"><Label htmlFor="product-unit">Unit</Label><Input id="product-unit" value={form.unit} onChange={update("unit")} /></div>
-          <div className="space-y-1.5 sm:col-span-2"><Label htmlFor="product-description">Description</Label><Textarea id="product-description" rows={3} value={form.description} onChange={update("description")} /></div>
-        </div>
-        <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button disabled={!canSave || createMutation.isPending} onClick={() => createMutation.mutate()}>{createMutation.isPending ? "Creating..." : "Create Product"}</Button></DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+  return <ProductFormDialog open={open} onOpenChange={onOpenChange} />;
 }
 
 export default function InventoryPage() {
@@ -225,6 +210,8 @@ export default function InventoryPage() {
   const [lowStock, setLowStock] = React.useState("false");
   const [restockProduct, setRestockProduct] = React.useState<Product | null>(null);
   const [addProductOpen, setAddProductOpen] = React.useState(false);
+  const [editProduct, setEditProduct] = React.useState<Product | null>(null);
+  const [labelProduct, setLabelProduct] = React.useState<Product | null>(null);
   const debouncedSearch = useDebounce(search);
 
   const { data, isLoading } = useProducts({
@@ -355,6 +342,8 @@ export default function InventoryPage() {
             onPageChange={setPage}
             actions={(row) => [
               { label: "Restock", onClick: () => setRestockProduct(row), icon: <PackagePlus className="h-4 w-4" /> },
+              { label: "Label", onClick: () => setLabelProduct(row), icon: <Printer className="h-4 w-4" /> },
+              { label: "Edit", onClick: () => setEditProduct(row), icon: <Pencil className="h-4 w-4" /> },
             ]}
           />
         </CardContent>
@@ -365,6 +354,15 @@ export default function InventoryPage() {
         onOpenChange={(open) => { if (!open) setRestockProduct(null); }}
       />
       <AddProductDialog open={addProductOpen} onOpenChange={setAddProductOpen} />
+      <ProductFormDialog
+        open={Boolean(editProduct)}
+        product={editProduct}
+        onOpenChange={(open) => { if (!open) setEditProduct(null); }}
+      />
+      <LabelDialog
+        product={labelProduct}
+        onOpenChange={(open) => { if (!open) setLabelProduct(null); }}
+      />
 
       {!isLoading && products.length === 0 && !search && lowStock === "true" && (
         <div className="flex items-start gap-2 rounded-md border p-4 text-sm text-muted-foreground">

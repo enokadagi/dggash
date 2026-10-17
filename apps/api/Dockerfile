@@ -26,8 +26,8 @@ WORKDIR /app
 
 RUN apk add --no-cache dumb-init
 
-RUN addgroup --system --gid 1001 AWIK NET && \
-    adduser --system --uid 1001 AWIK NET
+RUN addgroup --system --gid 1001 awiknet && \
+    adduser --system --uid 1001 awiknet
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/apps/api/dist ./apps/api/dist
@@ -35,17 +35,23 @@ COPY --from=build /app/apps/api/package.json ./apps/api/
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=build /app/packages/database/prisma ./packages/database/prisma
+COPY apps/api/docker-entrypoint.sh ./apps/api/docker-entrypoint.sh
 
 ENV NODE_ENV=production
 ENV PORT=3001
 
-RUN chown -R AWIK NET:AWIK NET /app
+# `sed` strips carriage returns so the script stays valid if the repo is checked
+# out on Windows (Git may rewrite the line endings to CRLF).
+RUN sed -i 's/\r$//' ./apps/api/docker-entrypoint.sh && \
+    chmod +x ./apps/api/docker-entrypoint.sh && \
+    chown -R awiknet:awiknet /app
 
-USER AWIK NET
+USER awiknet
 
 EXPOSE 3001
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3001/health || exit 1
 
-CMD ["dumb-init", "node", "apps/api/dist/main.js"]
+ENTRYPOINT ["dumb-init", "--", "./apps/api/docker-entrypoint.sh"]
+CMD ["node", "apps/api/dist/main.js"]

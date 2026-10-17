@@ -13,7 +13,7 @@ export function useAuth() {
     async (phone: string, password: string) => {
       const response = await api.post<{ user: User; accessToken: string; refreshToken: string }>(
         "/auth/login",
-        { phone, password }
+        { identifier: phone, password }
       );
       const { user: userData, accessToken, refreshToken } = response;
       login(userData, { accessToken, refreshToken });

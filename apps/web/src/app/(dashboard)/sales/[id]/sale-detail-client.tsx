@@ -19,8 +19,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { InvoicePrintButton } from "@/components/invoice/invoice-print-button";
+import { ReceiptPrintButton } from "@/components/printer/receipt-print-button";
+import { ArrowLeft, RotateCcw, XCircle, User, CreditCard, FileText, MessageCircle } from "lucide-react";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
-import { ArrowLeft, RotateCcw, XCircle, User, CreditCard } from "lucide-react";
+import { openWhatsAppWeb, buildSaleReceiptText } from "@/lib/whatsapp-link";
 
 export function SaleDetailClient({ id }: { id: string }) {
   const router = useRouter();
@@ -61,6 +64,31 @@ export function SaleDetailClient({ id }: { id: string }) {
               <Link href="/sales">
                 <ArrowLeft className="me-2 h-4 w-4" />
                 Back
+              </Link>
+            </Button>
+            <InvoicePrintButton sale={sale as any} />
+            <ReceiptPrintButton sale={sale as any} cashierName={sale.user ? `${sale.user.firstName} ${sale.user.lastName}` : undefined} />
+            <Button
+              variant="outline"
+              className="border-green-200 text-green-700 hover:bg-green-50"
+              onClick={() => {
+                const text = buildSaleReceiptText({
+                  customerName: customer ? `${customer.firstName} ${customer.lastName}`.trim() : null,
+                  saleNumber: sale.saleNumber,
+                  totalAmount: sale.totalAmount,
+                  currency: sale.currency,
+                  itemsCount: sale.items.length,
+                });
+                openWhatsAppWeb(customer?.phone || "", text);
+              }}
+            >
+              <MessageCircle className="me-2 h-4 w-4 text-green-600" />
+              WhatsApp Receipt
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`/sales/invoice?id=${encodeURIComponent(sale.id)}`}>
+                <FileText className="me-2 h-4 w-4" />
+                Preview Invoice
               </Link>
             </Button>
             {sale.status === "COMPLETED" && (

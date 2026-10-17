@@ -5,6 +5,7 @@ import { AuditService } from '../audit/audit.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
+import { safeOrderBy } from '../../common/utils/sort';
 import { ChangeUserPasswordDto } from './dto/change-user-password.dto';
 
 @Injectable()
@@ -45,7 +46,7 @@ export class UsersService {
           createdAt: true,
           updatedAt: true,
         },
-        orderBy: { [query.sortBy || 'createdAt']: query.sortOrder || 'desc' },
+        orderBy: safeOrderBy(query.sortBy, ['firstName', 'lastName', 'phone', 'email', 'role', 'status', 'createdAt', 'updatedAt'] as const, 'createdAt', query.sortOrder),
         skip: (page - 1) * limit,
         take: limit,
       }),

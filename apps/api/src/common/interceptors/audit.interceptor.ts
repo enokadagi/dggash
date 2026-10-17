@@ -8,6 +8,36 @@ import {
 import { tap } from 'rxjs';
 import { PrismaService } from '../prisma/prisma.service';
 
+const SENSITIVE_KEYS = new Set([
+  'password',
+  'newpassword',
+  'currentpassword',
+  'confirmpassword',
+  'passwordhash',
+  'accesstoken',
+  'refreshtoken',
+  'token',
+  'secret',
+  'apitoken',
+  'authorization',
+]);
+
+/** Strips credentials from a body before it is persisted in the audit log. */
+function redact(value: unknown, depth = 0): unknown {
+  if (depth > 6 || value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map((item) => redact(item, depth + 1));
+
+  const output: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (SENSITIVE_KEYS.has(key.toLowerCase())) {
+      output[key] = '[redacted]';
+    } else {
+      output[key] = redact(item, depth + 1);
+    }
+  }
+  return output;
+}
+
 @Injectable()
 export class AuditInterceptor implements NestInterceptor {
   private readonly logger = new Logger(AuditInterceptor.name);
@@ -30,6 +60,7 @@ export class AuditInterceptor implements NestInterceptor {
           try {
             const userId = user?.id;
             if (!userId) return;
+            const safeBody = redact(body ?? {});
             await this.prisma.auditLog
               .create({
                 data: {
@@ -37,7 +68,10 @@ export class AuditInterceptor implements NestInterceptor {
                   action,
                   entity: this.extractEntityType(url),
                   entityId: (response?.id || response?.data?.id || response?.result?.id) as string,
-                  newValues: JSON.stringify(body),
+                  newValues:
+                    safeBody && Object.keys(safeBody as object).length > 0
+                      ? JSON.stringify(safeBody)
+                      : null,
                   ipAddress: request.ip,
                   userAgent: request.headers['user-agent'] as string,
                 },
@@ -57,8 +91,15 @@ export class AuditInterceptor implements NestInterceptor {
   }
 
   private extractEntityType(url: string): string {
-    const segments = url.split('/').filter(Boolean);
-    return segments[1] || 'unknown';
+    const segments = url.split('?')[0].split('/').filter(Boolean);
+    // URLs are prefixed with `api/v1`, so skip the version segment and take
+    // the first real resource segment (e.g. /api/v1/customers -> customers).
+    const resourceIndex = segments.findIndex(
+      (segment) => segment !== 'api' && !/^v\d+$/i.test(segment),
+    );
+    const resource = resourceIndex >= 0 ? segments[resourceIndex] : undefined;
+    if (!resource) return 'unknown';
+    return resource.charAt(0).toUpperCase() + resource.slice(1);
   }
 
   private mapMethodToAction(method: string): 'CREATE' | 'UPDATE' | 'DELETE' {

@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { CreateSubscriptionDto } from './dto/create-subscription.dto';
 import { UpdateSubscriptionDto } from './dto/update-subscription.dto';
 import { QuerySubscriptionDto } from './dto/query-subscription.dto';
+import { safeOrderBy } from '../../common/utils/sort';
 import { RenewSubscriptionDto } from './dto/renew-subscription.dto';
 
 @Injectable()
@@ -58,7 +59,7 @@ export class SubscriptionsService {
         customer: { select: { id: true, firstName: true, lastName: true, phone: true, status: true } },
         plan: { select: { id: true, name: true, speed: true, price: true, durationDays: true, currency: true } },
       },
-      orderBy: { [query.sortBy || 'expiryDate']: query.sortOrder || 'asc' },
+      orderBy: safeOrderBy(query.sortBy, ['startDate', 'expiryDate', 'status', 'createdAt', 'updatedAt'] as const, 'expiryDate', query.sortOrder || 'asc'),
       skip: (page - 1) * limit,
       take: limit,
     });

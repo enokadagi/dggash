@@ -5,8 +5,6 @@ export const createCustomerSchema = z.object({
   email: z.string().email("Invalid email").optional().or(z.literal("")),
   firstName: z.string().min(1, "First name is required").max(50),
   lastName: z.string().min(1, "Last name is required").max(50),
-  password: z.string().min(6).optional(),
-  secondaryPhone: z.string().optional().or(z.literal("")),
   whatsappNumber: z.string().regex(/^\+[1-9]\d{1,14}$/, "WhatsApp number must be in E.164 format").optional().or(z.literal("")),
   address: z.string().optional().or(z.literal("")),
   location: z.string().optional().or(z.literal("")),
@@ -20,7 +18,17 @@ export const createCustomerSchema = z.object({
 
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
 
-export const updateCustomerSchema = createCustomerSchema.partial().omit({ password: true });
+export const createCustomerWithPlanSchema = createCustomerSchema.extend({
+  planId: z.string().min(1, "Please select an internet plan for the customer"),
+  startDate: z.string().optional(),
+  durationDays: z.coerce.number().min(1).optional(),
+  paymentStatus: z.enum(["paid", "pending", "partially_paid"]).default("paid"),
+  subscriptionNotes: z.string().optional().or(z.literal("")),
+});
+
+export type CreateCustomerWithPlanInput = z.infer<typeof createCustomerWithPlanSchema>;
+
+export const updateCustomerSchema = createCustomerSchema.partial();
 
 export type UpdateCustomerInput = z.infer<typeof updateCustomerSchema>;
 

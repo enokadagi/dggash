@@ -37,6 +37,51 @@ export class WhatsAppService {
     return this.cloudApi.isConfigured();
   }
 
+  async testConnection() {
+    return this.cloudApi.testConnection();
+  }
+
+  async getStatusDetails() {
+    const conf = await this.cloudApi.getActiveConfig();
+    const configured = !!(conf.phoneNumberId && conf.accessToken);
+    const settings = await this.prisma.companySetting.findMany({
+      where: {
+        key: {
+          in: [
+            'whatsapp.phoneNumberId',
+            'whatsapp.businessAccountId',
+            'whatsapp.webhookVerifyToken',
+            'reminder.enabled_5d',
+            'reminder.enabled_3d',
+            'reminder.enabled_1d',
+            'reminder.enabled_expiry',
+            'reminder.offset_5d',
+            'reminder.offset_3d',
+            'reminder.offset_1d',
+          ],
+        },
+      },
+    });
+    const settingsMap = Object.fromEntries(settings.map((s) => [s.key, s.value]));
+
+    return {
+      configured,
+      phoneNumberId: conf.phoneNumberId || settingsMap['whatsapp.phoneNumberId'] || '',
+      hasToken: !!conf.accessToken,
+      businessAccountId: settingsMap['whatsapp.businessAccountId'] || '',
+      webhookVerifyToken: settingsMap['whatsapp.webhookVerifyToken'] || 'awiknet-webhook-secret',
+      reminders: {
+        enabled5d: settingsMap['reminder.enabled_5d'] !== 'false',
+        enabled3d: settingsMap['reminder.enabled_3d'] !== 'false',
+        enabled1d: settingsMap['reminder.enabled_1d'] !== 'false',
+        enabledExpiry: settingsMap['reminder.enabled_expiry'] !== 'false',
+        offset5d: settingsMap['reminder.offset_5d'] || '5',
+        offset3d: settingsMap['reminder.offset_3d'] || '3',
+        offset1d: settingsMap['reminder.offset_1d'] || '1',
+      },
+    };
+  }
+
   private getReminderConfig(type: WhatsAppReminderType) {
     return REMINDER_CONFIG[type];
   }

@@ -3,9 +3,15 @@
 import * as React from "react";
 import Link from "next/link";
 import { useProducts, useProductLookup, useCustomerSearch, type Product, type Customer } from "@/hooks/api/use-products";
-import { useCreateSale } from "@/hooks/api/use-sales";
+import { useCreateSale, type Sale } from "@/hooks/api/use-sales";
 import { useDebounce } from "@/hooks/use-debounce";
-import { api } from "@/lib/api";
+import { useWedgeScanner } from "@/hooks/use-wedge-scanner";
+import { lookupProductByCode } from "@/lib/scanner/product-lookup";
+import { ReceiptPrintButton } from "@/components/printer/receipt-print-button";
+import { InvoicePrintButton } from "@/components/invoice/invoice-print-button";
+import type { InvoiceSale } from "@/components/invoice/a4-invoice";
+import { ScannerStatus } from "@/components/scanner/scanner-status";
+import { BarcodeScanner } from "@/components/barcode/barcode-scanner";
 import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -30,8 +36,10 @@ import {
   Check,
   ReceiptText,
   Layers,
+  Camera,
+  MessageCircle,
 } from "lucide-react";
-
+import { openWhatsAppWeb, buildSaleReceiptText } from "@/lib/whatsapp-link";
 interface CartLine {
   product: Product;
   quantity: number;
@@ -44,6 +52,11 @@ export default function PosPage() {
   const [q, setQ] = React.useState("");
   const debouncedQ = useDebounce(q, 300);
   const [lookupError, setLookupError] = React.useState<string | null>(null);
+  const [scanMessage, setScanMessage] = React.useState<string | null>(null);
+  const [lastScannedProduct, setLastScannedProduct] = React.useState<Product | null>(null);
+  const [cameraOpen, setCameraOpen] = React.useState(false);
+  /** Guards against a double click submitting the same sale twice. */
+  const checkoutLock = React.useRef(false);
   const [cart, setCart] = React.useState<CartLine[]>([]);
   const [customer, setCustomer] = React.useState<Customer | null>(null);
   const [customerQuery, setCustomerQuery] = React.useState("");
@@ -54,6 +67,7 @@ export default function PosPage() {
     totalAmount: number;
     currency: string;
     items: number;
+    detail: Sale;
   }>(null);
 
   const lookup = useProductLookup(debouncedQ);
@@ -71,21 +85,44 @@ export default function PosPage() {
     }
   }, [customerResults]);
 
-  const addToCart = (product: Product) => {
-    if (product.currentStock <= 0) return;
+  const addToCart = React.useCallback((product: Product): boolean => {
+    if (!product.isActive) {
+      setScanMessage(`"${product.name}" is inactive and cannot be sold.`);
+      return false;
+    }
+    if (product.currentStock <= 0) {
+      setScanMessage(`"${product.name}" is out of stock.`);
+      return false;
+    }
+
+    let added = false;
     setCart((prev) => {
       const existing = prev.find((l) => l.product.id === product.id);
       if (existing) {
-        if (existing.quantity >= product.currentStock) return prev;
+        if (existing.quantity >= product.currentStock) {
+          setScanMessage(
+            `Only ${product.currentStock} x "${product.name}" left in stock.`
+          );
+          return prev;
+        }
+        added = true;
         return prev.map((l) =>
           l.product.id === product.id ? { ...l, quantity: l.quantity + 1 } : l
         );
       }
+      added = true;
       return [...prev, { product, quantity: 1 }];
     });
-    setQ("");
-    requestAnimationFrame(() => scannerRef.current?.focus());
-  };
+
+    if (added) {
+      setScanMessage(null);
+      setLastScannedProduct(product);
+      setQ("");
+      // Return focus so the next scan keeps landing on the scan box.
+      requestAnimationFrame(() => scannerRef.current?.focus());
+    }
+    return added;
+  }, []);
 
   const setQty = (id: string, qty: number) => {
     setCart((prev) =>
@@ -107,73 +144,50 @@ export default function PosPage() {
   const currency = cart[0]?.product.currency || "USD";
   const isCheckingOut = createSale.isPending;
 
-  const addByLookup = React.useCallback(
-    async (query: string) => {
-      const code = query.trim();
-      if (!code) return;
-      try {
-        const product = await api.get<Product | null>(
-          `/products/lookup?q=${encodeURIComponent(code)}`
-        );
-        if (product) {
-          setLookupError(null);
-          addToCart(product);
-        } else {
-          setLookupError(`No product found for "${code}". Check the barcode and try again.`);
-          requestAnimationFrame(() => scannerRef.current?.focus());
-        }
-      } catch {
-        setLookupError("Could not look up the product. Check the API connection and try again.");
-        requestAnimationFrame(() => scannerRef.current?.focus());
-      }
-    },
-    []
-  );
+  /**
+   * Resolves a code through the canonical lookup shared with the camera scanner,
+   * then adds it to the cart. Never throws, so a bad scan or a network failure
+   * cannot take down the open sale.
+   */
+  const addByCode = React.useCallback(
+    async (rawCode: string) => {
+      const result = await lookupProductByCode(rawCode);
 
-  const scanOrSearch = () => {
-    if (!q.trim()) return;
-    void addByLookup(q);
-  };
-
-  React.useEffect(() => {
-    let buffer = "";
-    let lastKeyTime = 0;
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      const isEditable =
-        !!target &&
-        (target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.tagName === "SELECT" ||
-          target.isContentEditable);
-      if (isEditable) return;
-
-      const now = Date.now();
-      if (now - lastKeyTime > 100) buffer = "";
-      lastKeyTime = now;
-
-      if (e.key === "Enter" || e.key === "NumpadEnter") {
-        if (buffer.trim()) {
-          e.preventDefault();
-          const code = buffer.trim();
-          buffer = "";
-          void addByLookup(code);
-        }
+      if (result.ok && result.product) {
+        addToCart(result.product);
         return;
       }
 
-      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        buffer += e.key;
-      }
-    };
+      setLookupError(null);
+      setScanMessage(
+        result.message ??
+          `No product found for "${result.code}". Check the barcode and try again.`
+      );
+      requestAnimationFrame(() => scannerRef.current?.focus());
+    },
+    [addToCart]
+  );
 
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [addByLookup]);
+  // HENEX 2D (USB-KBW) global detector. Replaces the previous ad-hoc buffer,
+  // which relied purely on a 100ms stall and would happily look up whatever a
+  // human typed outside an input field.
+  const wedge = useWedgeScanner({
+    onScan: (value) => {
+      void addByCode(value);
+    },
+  });
+
+  const scanOrSearch = () => {
+    if (!q.trim()) return;
+    void addByCode(q);
+  };
 
   const checkout = () => {
     if (cart.length === 0) return;
+    // Repeated clicks on "Complete Sale" must not create two sales.
+    if (checkoutLock.current || createSale.isPending) return;
+    checkoutLock.current = true;
+
     createSale.mutate(
       {
         items: cart.map((l) => ({ productId: l.product.id, quantity: l.quantity })),
@@ -189,11 +203,21 @@ export default function PosPage() {
             totalAmount: resp.receipt.totalAmount,
             currency: resp.receipt.currency,
             items: resp.receipt.items,
+            // Kept so the receipt can be printed (or re-printed) from the
+            // success screen without another server round-trip.
+            detail: resp.sale,
           });
           setCart([]);
           setCustomer(null);
           setCustomerQuery("");
           setNotes("");
+        },
+        // Release the lock on failure so the cashier can correct and retry.
+        onError: () => {
+          checkoutLock.current = false;
+        },
+        onSettled: () => {
+          checkoutLock.current = false;
         },
       }
     );
@@ -211,12 +235,15 @@ export default function PosPage() {
         title="Point of Sale"
         description="Scan barcodes or search to build the cart, then check out"
         actions={
-          <Button asChild variant="outline">
-            <Link href="/sales">
-              <ReceiptText className="me-2 h-4 w-4" />
-              Sales History
-            </Link>
-          </Button>
+          <div className="flex items-center gap-3">
+            <ScannerStatus status={wedge.status} lastScanned={wedge.lastScanned} />
+            <Button asChild variant="outline">
+              <Link href="/sales">
+                <ReceiptText className="me-2 h-4 w-4" />
+                Sales History
+              </Link>
+            </Button>
+          </div>
         }
       />
 
@@ -246,7 +273,58 @@ export default function PosPage() {
                 <Button onClick={scanOrSearch} disabled={!q.trim()}>
                   Add
                 </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCameraOpen(true)}
+                  title="Scan with the device camera instead of a USB scanner"
+                >
+                  <Camera className="me-2 h-4 w-4" />
+                  Camera
+                </Button>
               </div>
+
+              {/* The camera scanner feeds the exact same backend lookup as the
+                  USB keyboard-wedge device, so both resolve identically. */}
+              <BarcodeScanner
+                open={cameraOpen}
+                onOpenChange={setCameraOpen}
+                onDetected={(value) => {
+                  void addByCode(value);
+                }}
+                title="Scan product"
+                description="Point the camera at a barcode or QR code, or use a USB scanner in the field below."
+              />
+
+              {/* Scan feedback. Always visible (not gated on the search box) so
+                  the cashier gets immediate confirmation or a clear failure. */}
+              {scanMessage ? (
+                <div
+                  role="alert"
+                  data-testid="scan-message"
+                  className="flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+                >
+                  <PackageSearch className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{scanMessage}</span>
+                </div>
+              ) : lastScannedProduct ? (
+                <div
+                  role="status"
+                  data-testid="scan-success"
+                  className="flex items-center gap-2 rounded-md border border-success/40 bg-success/10 p-3 text-sm"
+                >
+                  <Check className="h-4 w-4 shrink-0 text-success" />
+                  <span>
+                    Added <strong>{lastScannedProduct.name}</strong> (SKU{" "}
+                    {lastScannedProduct.sku})
+                  </span>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  USB scanner (HENEX 2D, keyboard mode) is live — just scan. Human typing never
+                  triggers a lookup.
+                </p>
+              )}
 
               {debouncedQ && (
                 <div>
@@ -270,30 +348,22 @@ export default function PosPage() {
                       <p className="font-semibold tabular-nums">
                         {formatCurrency(Number(lookup.data.sellingPrice), lookup.data.currency)}
                       </p>
-                      <Button
-                        size="sm"
-                        onClick={() => addToCart(lookup.data!)}
-                        disabled={lookup.data.currentStock <= 0}
-                      >
-                        <Plus className="me-1 h-4 w-4" />
-                        Add
-                      </Button>
-                    </div>
-                  )}
+<Button
+                          size="sm"
+                          onClick={() => addToCart(lookup.data!)}
+                          disabled={lookup.data.currentStock <= 0 || !lookup.data.isActive}
+                        >
+                          <Plus className="me-1 h-4 w-4" />
+                          Add
+                        </Button>
+                      </div>
+                    )}
                   {lookupError ? (
                     <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                       <PackageSearch className="h-4 w-4 shrink-0" />
                       {lookupError}
                     </div>
-                  ) : (
-                    <div className="mt-2 flex items-center gap-2">
-                      <Check className="h-4 w-4 text-success" />
-                      <p className="text-xs text-muted-foreground">
-                        Tip: plug in any USB barcode scanner, then just scan — the product is
-                        added instantly. Works even when the scan box is not focused.
-                      </p>
-                    </div>
-                  )}
+                  ) : null}
                 </div>
               )}
             </CardContent>
@@ -323,7 +393,7 @@ export default function PosPage() {
                     <button
                       key={p.id}
                       type="button"
-                      disabled={p.currentStock <= 0}
+                      disabled={p.currentStock <= 0 || !p.isActive}
                       onClick={() => addToCart(p)}
                       className="flex h-full flex-col items-start justify-between rounded-md border p-3 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                     >
@@ -420,13 +490,48 @@ export default function PosPage() {
                     {lastReceipt.items} line item{lastReceipt.items === 1 ? "" : "s"}
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <Button className="flex-1" onClick={resetAfterReceipt}>
-                    New Sale
+                <div className="flex flex-col gap-2">
+                  {/* Primary company document output: a real A4 invoice. */}
+                  <InvoicePrintButton
+                    sale={lastReceipt.detail as unknown as InvoiceSale}
+                    label="Print A4 Invoice"
+                  />
+                  {/* Optional thermal receipt, independent of A4 printing. */}
+                  <ReceiptPrintButton
+                    sale={lastReceipt.detail}
+                    cashierName={
+                      lastReceipt.detail.user
+                        ? `${lastReceipt.detail.user.firstName} ${lastReceipt.detail.user.lastName}`.trim()
+                        : undefined
+                    }
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-green-200 text-green-700 hover:bg-green-50"
+                    onClick={() => {
+                      const cust = lastReceipt.detail.customer;
+                      const text = buildSaleReceiptText({
+                        customerName: cust ? `${cust.firstName} ${cust.lastName}`.trim() : null,
+                        saleNumber: lastReceipt.saleNumber,
+                        totalAmount: lastReceipt.totalAmount,
+                        currency: lastReceipt.currency,
+                        itemsCount: lastReceipt.items,
+                      });
+                      openWhatsAppWeb(cust?.phone || "", text);
+                    }}
+                  >
+                    <MessageCircle className="me-2 h-4 w-4 text-green-600" />
+                    Send WhatsApp Receipt (Free)
                   </Button>
-                  <Button asChild variant="outline">
-                    <Link href={`/sales/${createSale.data?.sale.id ?? ""}`}>View</Link>
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button className="flex-1" onClick={resetAfterReceipt}>
+                      New Sale
+                    </Button>
+                    <Button asChild variant="outline">
+                      <Link href={`/sales/detail?id=${encodeURIComponent(createSale.data?.sale.id ?? "")}`}>View</Link>
+                    </Button>
+                  </div>
                 </div>
               </div>
             ) : (
