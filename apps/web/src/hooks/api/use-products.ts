@@ -348,4 +348,48 @@ export function useUpdateProduct() {
   });
 }
 
+export interface ProductImportRow {
+  name?: string;
+  sku?: string;
+  barcode?: string;
+  category?: string;
+  purchasePrice?: string | number;
+  sellingPrice?: string | number;
+  currency?: string;
+  initialStock?: string | number;
+  minStock?: string | number;
+  unit?: string;
+  description?: string;
+  isActive?: string | boolean;
+}
+
+export interface ProductImportResultRow {
+  row: number;
+  status: 'imported' | 'failed';
+  id?: string;
+  sku?: string | null;
+  name?: string;
+  error?: string;
+}
+
+export interface ProductImportResult {
+  imported: number;
+  failed: number;
+  total: number;
+  createdCategories: string[];
+  results: ProductImportResultRow[];
+}
+
+export function useImportProducts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (rows: ProductImportRow[]) =>
+      api.post<ProductImportResult>('/products/import', { rows }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['products'] });
+      queryClient.invalidateQueries({ queryKey: ['inventory'] });
+    },
+  });
+}
+
 

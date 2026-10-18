@@ -12,6 +12,7 @@ import {
   ArrowRight,
   MessageCircle,
 } from "lucide-react";
+import { useLocalization } from "@/hooks/use-localization";
 import { useSales } from "@/hooks/api/use-sales";
 import { useInventorySummary, useProducts } from "@/hooks/api/use-products";
 import { StatCard } from "@/components/ui/stat-card";
@@ -23,6 +24,7 @@ import { formatCurrency, getRelativeTime } from "@/lib/utils";
 import { SubscribersMapCard } from "@/components/dashboard/subscribers-map";
 
 export default function DashboardPage() {
+  const { t } = useLocalization();
   const { data: salesRes, isLoading: salesLoading } = useSales({ page: 1, limit: 50 });
   const { data: summary, isLoading: summaryLoading } = useInventorySummary();
   const { data: lowStockRes } = useProducts({ limit: 5, lowStock: "true" });
@@ -40,23 +42,22 @@ export default function DashboardPage() {
         <div className="pointer-events-none absolute -bottom-24 -start-10 h-72 w-72 rounded-full bg-white/10" />
         <div className="relative max-w-2xl">
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-            Start selling in seconds
+            {t("dashboardPage.heroTitle")}
           </h1>
           <p className="mt-2 text-sm text-primary-foreground/80 sm:text-base">
-            Scan a barcode or search a product, then complete the sale. Every sale updates
-            your inventory automatically.
+            {t("dashboardPage.heroSubtitle")}
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <Button asChild size="lg" className="bg-background text-foreground hover:bg-background/90">
               <Link href="/sales/pos">
                 <ShoppingCart className="me-2 h-5 w-5" />
-                Open Point of Sale
+                {t("dashboardPage.openPos")}
               </Link>
             </Button>
             <Button asChild size="lg" variant="outline" className="border-white/30 bg-transparent text-primary-foreground hover:bg-white/10 hover:text-primary-foreground">
               <Link href="/sales">
                 <ReceiptText className="me-2 h-5 w-5" />
-                Sales History
+                {t("nav.salesHistory")}
               </Link>
             </Button>
           </div>
@@ -77,28 +78,28 @@ export default function DashboardPage() {
         ) : (
           <>
             <StatCard
-              title="Total Revenue"
+              title={t("dashboardPage.totalRevenue")}
               value={formatCurrency(totalRevenue)}
               icon={DollarSign}
-              description="Completed sales"
+              description={t("dashboardPage.completedSales")}
             />
             <StatCard
-              title="Sales Today"
+              title={t("dashboardPage.salesToday")}
               value={todayCount}
               icon={ReceiptText}
-              description="Across all payment methods"
+              description={t("dashboardPage.acrossPaymentMethods")}
             />
             <StatCard
-              title="Products in Stock"
+              title={t("dashboardPage.productsInStock")}
               value={summary?.totalStock ?? 0}
               icon={Layers}
-              description={`${summary?.totalProducts ?? 0} products`}
+              description={t("dashboardPage.productsCount", { count: summary?.totalProducts ?? 0 })}
             />
             <StatCard
-              title="Low Stock"
+              title={t("dashboardPage.lowStock")}
               value={summary?.lowStock ?? 0}
               icon={AlertTriangle}
-              description={`${summary?.outOfStock ?? 0} out of stock`}
+              description={t("dashboardPage.outOfStockCount", { count: summary?.outOfStock ?? 0 })}
             />
           </>
         )}
@@ -107,10 +108,10 @@ export default function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Recent Sales</CardTitle>
+            <CardTitle className="text-base">{t("dashboardPage.recentSales")}</CardTitle>
             <Button asChild variant="ghost" size="sm">
               <Link href="/sales" className="flex items-center gap-1">
-                View all <ArrowRight className="h-3.5 w-3.5" />
+                {t("dashboardPage.viewAll")} <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
           </CardHeader>
@@ -123,7 +124,7 @@ export default function DashboardPage() {
               </div>
             ) : sales.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                No sales yet. Open Point of Sale to start selling.
+                {t("dashboardPage.noSales")}
               </p>
             ) : (
               <ul className="divide-y">
@@ -156,10 +157,10 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base">Low Stock Alerts</CardTitle>
+            <CardTitle className="text-base">{t("dashboardPage.lowStockAlerts")}</CardTitle>
             <Button asChild variant="ghost" size="sm">
               <Link href="/inventory" className="flex items-center gap-1">
-                Manage <ArrowRight className="h-3.5 w-3.5" />
+                {t("dashboardPage.manage")} <ArrowRight className="h-3.5 w-3.5" />
               </Link>
             </Button>
           </CardHeader>
@@ -174,7 +175,7 @@ export default function DashboardPage() {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{p.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        SKU {p.sku} · {p.category?.name ?? "—"}
+                        {t("dashboardPage.sku")} {p.sku} · {p.category?.name ?? "—"}
                       </p>
                     </div>
                     <p className="shrink-0 text-sm font-semibold tabular-nums">
@@ -185,11 +186,11 @@ export default function DashboardPage() {
               </ul>
             ) : lowStockRes?.data?.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                Inventory levels look healthy.
+                {t("dashboardPage.inventoryHealthy")}
               </p>
             ) : (
               <p className="py-8 text-center text-sm text-muted-foreground">
-                No products in stock yet.
+                {t("dashboardPage.noProductsInStock")}
               </p>
             )}
           </CardContent>
@@ -199,13 +200,13 @@ export default function DashboardPage() {
       <SubscribersMapCard />
 
       <div>
-        <h2 className="mb-4 text-lg font-semibold">Quick Actions</h2>
+        <h2 className="mb-4 text-lg font-semibold">{t("dashboard.quickActions")}</h2>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
-            { label: "Start a Sale", href: "/sales/pos", icon: ShoppingCart },
-            { label: "View Inventory", href: "/inventory", icon: Package },
-            { label: "WhatsApp Templates", href: "/whatsapp/templates", icon: MessageCircle },
-            { label: "Sales History", href: "/sales", icon: ReceiptText },
+            { label: t("dashboardPage.startSale"), href: "/sales/pos", icon: ShoppingCart },
+            { label: t("dashboardPage.viewInventory"), href: "/inventory", icon: Package },
+            { label: t("dashboardPage.whatsappTemplates"), href: "/whatsapp/templates", icon: MessageCircle },
+            { label: t("nav.salesHistory"), href: "/sales", icon: ReceiptText },
           ].map((action) => (
             <Button key={action.href} variant="outline" className="h-auto justify-start gap-3 p-4" asChild>
               <Link href={action.href}>

@@ -11,9 +11,9 @@ export default function ReportsPage() {
   const { t } = useLocalization();
 
   const reports = [
-    { title: t("reports.revenue"), href: "/reports/revenue", icon: TrendingUp, description: "View revenue trends and financial reports" },
-    { title: t("reports.customers"), href: "/reports/customers", icon: Users, description: "Customer growth and analytics" },
-    { title: t("reports.inventory"), href: "/reports/inventory", icon: Package, description: "Inventory status and movement reports" },
+    { title: t("reports.revenue"), href: "/reports/revenue", icon: TrendingUp, description: t("reportsPages.revenueDesc") },
+    { title: t("reports.customers"), href: "/reports/customers", icon: Users, description: t("reportsPages.customersDesc") },
+    { title: t("reports.inventory"), href: "/reports/inventory", icon: Package, description: t("reportsPages.inventoryDesc") },
   ];
 
   return (

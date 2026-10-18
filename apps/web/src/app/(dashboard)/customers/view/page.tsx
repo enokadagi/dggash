@@ -234,10 +234,10 @@ export default function CustomerDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["customer", id] });
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       setEditCustomerOpen(false);
-      toast.success("Customer details updated successfully");
+      toast.success(t("customersPages.view.updateSuccess"));
     },
     onError: (err: { message?: string }) => {
-      toast.error(err.message || "Failed to update customer details");
+      toast.error(err.message || t("customersPages.view.updateError"));
     },
   });
 
@@ -309,7 +309,7 @@ export default function CustomerDetailPage() {
   const handleAssignPlanSubmit = () => {
     if (!id) return;
     if (!assignPlanForm.planId) {
-      toast.error("Please select a plan");
+      toast.error(t("customersPages.view.selectPlanError"));
       return;
     }
     createSubMutation.mutate(
@@ -339,6 +339,35 @@ export default function CustomerDetailPage() {
 
   const totalSpent = (salesData?.data || []).reduce((sum, s) => sum + Number(s.totalAmount), 0);
 
+  const paymentLabel = (status?: string | null) => {
+    if (status === "pending") return t("customersPages.paymentStatus.pending");
+    if (status === "partially_paid") return t("customersPages.paymentStatus.partiallyPaid");
+    return t("customersPages.paymentStatus.paid");
+  };
+
+  const statusLabel = (status?: string | null) => {
+    switch (status) {
+      case "ACTIVE":
+        return t("customersPages.status.active");
+      case "SUSPENDED":
+        return t("customersPages.status.suspended");
+      case "EXPIRED":
+        return t("customersPages.status.expired");
+      case "CANCELLED":
+        return t("customersPages.status.cancelled");
+      case "PENDING":
+        return t("customersPages.status.pending");
+      case "EXPIRING_SOON":
+        return t("customersPages.status.expiringSoon");
+      case "COMPLETED":
+        return t("customersPages.status.completed");
+      case "REFUNDED":
+        return t("customersPages.status.refunded");
+      default:
+        return status || "";
+    }
+  };
+
   // Expiry countdown calculation
   const expiryInfo = React.useMemo(() => {
     if (!activeSub?.expiryDate) return null;
@@ -348,16 +377,16 @@ export default function CustomerDetailPage() {
     const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
 
     if (diffDays < 0) {
-      return { text: `Expired ${Math.abs(diffDays)}d ago`, variant: "destructive" as const, days: diffDays };
+      return { text: t("customersPages.view.expiredAgo", { count: Math.abs(diffDays) }), variant: "destructive" as const, days: diffDays };
     }
     if (diffDays === 0) {
-      return { text: "Expires today!", variant: "destructive" as const, days: 0 };
+      return { text: t("customersPages.view.expiresToday"), variant: "destructive" as const, days: 0 };
     }
     if (diffDays <= 3) {
-      return { text: `Expires in ${diffDays}d`, variant: "warning" as const, days: diffDays };
+      return { text: t("customersPages.view.expiresIn", { count: diffDays }), variant: "warning" as const, days: diffDays };
     }
-    return { text: `${diffDays} days remaining`, variant: "success" as const, days: diffDays };
-  }, [activeSub]);
+    return { text: t("customersPages.view.daysRemaining", { count: diffDays }), variant: "success" as const, days: diffDays };
+  }, [activeSub, t]);
 
   if (id === null || isLoading) {
     return (
@@ -370,7 +399,7 @@ export default function CustomerDetailPage() {
   if (error || !customer) {
     return (
       <div className="py-20 text-center">
-        <EmptyState message="Customer not found or error loading details" />
+        <EmptyState message={t("customersPages.view.notFound")} />
       </div>
     );
   }
@@ -379,16 +408,19 @@ export default function CustomerDetailPage() {
     <div className="space-y-6 pb-12">
       <PageHeader
         title={`${customer.firstName} ${customer.lastName}`}
-        description={`Account #${customer.id.slice(0, 8)} • Phone: ${customer.phone}`}
+        description={t("customersPages.view.accountInfo", {
+          id: customer.id.slice(0, 8),
+          phone: customer.phone,
+        })}
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={() => router.back()}>
               <ArrowLeft className="me-1.5 h-4 w-4" />
-              {t("common.back") || "Back"}
+              {t("common.back")}
             </Button>
             <Button size="sm" onClick={openEditCustomer}>
               <Pencil className="me-1.5 h-4 w-4" />
-              Edit Profile
+              {t("customersPages.view.editProfile")}
             </Button>
           </div>
         }
@@ -449,10 +481,12 @@ export default function CustomerDetailPage() {
                     target="_blank"
                     rel="noopener noreferrer"
                     className="flex items-center gap-1.5 text-xs text-primary font-mono bg-primary/5 hover:bg-primary/10 p-2 rounded text-start transition-colors border border-primary/20"
-                    title="Open in Google Maps"
+                    title={t("customersPages.view.openMaps")}
                   >
                     <MapPin className="h-3.5 w-3.5 shrink-0 text-primary" />
-                    <span className="truncate">GPS: {customer.location}</span>
+                    <span className="truncate">
+                      {t("customersPages.view.gpsLabel", { location: customer.location })}
+                    </span>
                   </a>
                 )}
                 {customer.notes && (
@@ -468,12 +502,12 @@ export default function CustomerDetailPage() {
                     onClick={() =>
                       openWhatsAppWeb(
                         customer.whatsappNumber || customer.phone,
-                        `Hello ${customer.firstName}, this is AWIK NET Internet Service Provider. How can we help you today?`,
+                        t("customersPages.view.whatsappGreeting", { firstName: customer.firstName }),
                       )
                     }
                   >
                     <MessageCircle className="me-1.5 h-4 w-4" />
-                    Chat on WhatsApp (Free)
+                    {t("customersPages.view.chatWhatsapp")}
                   </Button>
 
                   {activeSub && (
@@ -492,7 +526,7 @@ export default function CustomerDetailPage() {
                       }}
                     >
                       <Clock className="me-1.5 h-3.5 w-3.5" />
-                      Send Expiry Reminder (Free)
+                      {t("customersPages.view.sendReminder")}
                     </Button>
                   )}
                 </div>
@@ -505,16 +539,16 @@ export default function CustomerDetailPage() {
         <div className="lg:col-span-3 space-y-6">
           {/* Top Quick Stats */}
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard title="Active Plan" value={activeSub?.plan.name || "None"} icon={Wifi} />
+            <StatCard title={t("customersPages.view.activePlan")} value={activeSub?.plan.name || t("customersPages.view.none")} icon={Wifi} />
             <StatCard
-              title="Plan Status"
-              value={activeSub ? activeSub.status : "No Plan"}
+              title={t("customersPages.view.planStatus")}
+              value={activeSub ? statusLabel(activeSub.status) : t("customersPages.view.noPlan")}
               description={expiryInfo?.text}
               icon={Clock}
             />
-            <StatCard title="Total Spent" value={formatCurrency(totalSpent)} icon={Receipt} />
+            <StatCard title={t("customersPages.view.totalSpent")} value={formatCurrency(totalSpent)} icon={Receipt} />
             <StatCard
-              title="Member Since"
+              title={t("customersPages.view.memberSince")}
               value={formatDate(customer.createdAt)}
               icon={Calendar}
             />
@@ -535,8 +569,8 @@ export default function CustomerDetailPage() {
                         <StatusBadge status={activeSub.status} />
                       </CardTitle>
                       <CardDescription>
-                        Speed: <span className="font-semibold text-foreground">{activeSub.plan.speed}</span> •{" "}
-                        {activeSub.plan.durationDays} Days cycle •{" "}
+                        {t("customersPages.view.speed")} <span className="font-semibold text-foreground">{activeSub.plan.speed}</span> •{" "}
+                        {t("customersPages.view.daysCycle", { count: activeSub.plan.durationDays })} •{" "}
                         <span className="font-semibold text-primary">
                           {formatCurrency(Number(activeSub.plan.price), activeSub.plan.currency)}
                         </span>
@@ -563,11 +597,11 @@ export default function CustomerDetailPage() {
               <CardContent className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-3 rounded-lg bg-background/80 p-3 border border-border/80">
                   <div>
-                    <span className="text-xs text-muted-foreground">Start Date</span>
+                    <span className="text-xs text-muted-foreground">{t("customersPages.view.startDate")}</span>
                     <p className="font-medium text-sm">{formatDate(activeSub.startDate)}</p>
                   </div>
                   <div>
-                    <span className="text-xs text-muted-foreground">Expiry Date</span>
+                    <span className="text-xs text-muted-foreground">{t("customersPages.view.expiryDate")}</span>
                     <p className="font-medium text-sm text-foreground flex items-center gap-1.5">
                       {formatDate(activeSub.expiryDate)}
                       {expiryInfo?.days !== undefined && expiryInfo.days <= 3 && (
@@ -576,10 +610,10 @@ export default function CustomerDetailPage() {
                     </p>
                   </div>
                   <div>
-                    <span className="text-xs text-muted-foreground">Payment Status</span>
+                    <span className="text-xs text-muted-foreground">{t("customersPages.view.paymentStatus")}</span>
                     <div className="font-medium text-sm capitalize mt-0.5">
                       <Badge variant={activeSub.paymentStatus === "paid" ? "success" : "secondary"}>
-                        {activeSub.paymentStatus || "paid"}
+                        {paymentLabel(activeSub.paymentStatus)}
                       </Badge>
                     </div>
                   </div>
@@ -587,7 +621,7 @@ export default function CustomerDetailPage() {
 
                 {activeSub.notes && (
                   <p className="text-xs text-muted-foreground bg-muted/30 p-2 rounded border border-border/40">
-                    <span className="font-semibold">Connection Notes:</span> {activeSub.notes}
+                    <span className="font-semibold">{t("customersPages.view.connectionNotes")}</span> {activeSub.notes}
                   </p>
                 )}
 
@@ -599,7 +633,7 @@ export default function CustomerDetailPage() {
                     onClick={() => openRenewModal(activeSub)}
                   >
                     <RefreshCw className="me-1.5 h-3.5 w-3.5" />
-                    Renew / Extend Plan
+                    {t("customersPages.view.renewExtend")}
                   </Button>
 
                   <Button
@@ -608,7 +642,7 @@ export default function CustomerDetailPage() {
                     onClick={() => openEditSubModal(activeSub)}
                   >
                     <Pencil className="me-1.5 h-3.5 w-3.5" />
-                    Edit / Change Plan
+                    {t("customersPages.view.editChange")}
                   </Button>
 
                   {activeSub.status === "SUSPENDED" ? (
@@ -620,7 +654,7 @@ export default function CustomerDetailPage() {
                       disabled={reactivateSubMutation.isPending}
                     >
                       <Power className="me-1.5 h-3.5 w-3.5" />
-                      Reactivate Service
+                      {t("customersPages.view.reactivateService")}
                     </Button>
                   ) : (
                     <Button
@@ -631,7 +665,7 @@ export default function CustomerDetailPage() {
                       disabled={suspendSubMutation.isPending}
                     >
                       <Power className="me-1.5 h-3.5 w-3.5" />
-                      Suspend Service
+                      {t("customersPages.view.suspendService")}
                     </Button>
                   )}
 
@@ -651,7 +685,7 @@ export default function CustomerDetailPage() {
                     }}
                   >
                     <Plus className="me-1.5 h-3.5 w-3.5" />
-                    Assign New Subscription
+                    {t("customersPages.view.assignNewSubscription")}
                   </Button>
                 </div>
               </CardContent>
@@ -659,9 +693,9 @@ export default function CustomerDetailPage() {
           ) : (
             <Card className="border-dashed p-6 text-center">
               <Wifi className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-              <h3 className="font-semibold text-foreground">No Active Internet Plan</h3>
+              <h3 className="font-semibold text-foreground">{t("customersPages.view.noPlanTitle")}</h3>
               <p className="text-xs text-muted-foreground mt-1 max-w-md mx-auto">
-                This subscriber does not currently have an active internet service plan.
+                {t("customersPages.view.noPlanDescription")}
               </p>
               <Button
                 size="sm"
@@ -669,7 +703,7 @@ export default function CustomerDetailPage() {
                 onClick={() => setAssignPlanDialogOpen(true)}
               >
                 <Plus className="me-1.5 h-4 w-4" />
-                Assign Internet Plan Now
+                {t("customersPages.view.assignNow")}
               </Button>
             </Card>
           )}
@@ -679,43 +713,43 @@ export default function CustomerDetailPage() {
             <TabsList className="flex-wrap">
               <TabsTrigger value="subscriptions">
                 <Layers className="me-1.5 h-4 w-4" />
-                Subscription History ({subscriptions.length})
+                {t("customersPages.view.subscriptionHistory", { n: subscriptions.length })}
               </TabsTrigger>
               <TabsTrigger value="sales">
                 <Receipt className="me-1.5 h-4 w-4" />
-                Sales History ({salesData?.data?.length || 0})
+                {t("customersPages.view.salesHistory", { n: salesData?.data?.length || 0 })}
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="subscriptions" className="space-y-4">
               <Card>
                 <CardHeader className="py-4 flex flex-row items-center justify-between">
-                  <CardTitle className="text-base">All Customer Subscriptions</CardTitle>
+                  <CardTitle className="text-base">{t("customersPages.view.allSubscriptions")}</CardTitle>
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => setAssignPlanDialogOpen(true)}
                   >
                     <Plus className="me-1 h-3.5 w-3.5" />
-                    Add Subscription
+                    {t("customersPages.view.addSubscription")}
                   </Button>
                 </CardHeader>
                 <CardContent className="pt-0">
                   {subscriptions.length === 0 ? (
                     <p className="py-8 text-center text-sm text-muted-foreground">
-                      No subscription records found
+                      {t("customersPages.view.noSubscriptions")}
                     </p>
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Plan & Speed</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Price</TableHead>
-                          <TableHead>Start Date</TableHead>
-                          <TableHead>Expiry Date</TableHead>
-                          <TableHead>Payment</TableHead>
-                          <TableHead className="text-end">Actions</TableHead>
+                          <TableHead>{t("customersPages.view.planSpeed")}</TableHead>
+                          <TableHead>{t("common.status")}</TableHead>
+                          <TableHead>{t("plans.price")}</TableHead>
+                          <TableHead>{t("customersPages.view.startDate")}</TableHead>
+                          <TableHead>{t("customersPages.view.expiryDate")}</TableHead>
+                          <TableHead>{t("customersPages.view.payment")}</TableHead>
+                          <TableHead className="text-end">{t("common.actions")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -740,7 +774,7 @@ export default function CustomerDetailPage() {
                                 variant={sub.paymentStatus === "paid" ? "success" : "secondary"}
                                 className="text-[11px]"
                               >
-                                {sub.paymentStatus || "paid"}
+                                {paymentLabel(sub.paymentStatus)}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-end">
@@ -752,7 +786,7 @@ export default function CustomerDetailPage() {
                                   onClick={() => openRenewModal(sub)}
                                 >
                                   <RefreshCw className="me-1 h-3 w-3" />
-                                  Renew
+                                  {t("customersPages.view.renew")}
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -777,17 +811,17 @@ export default function CustomerDetailPage() {
               <Card>
                 <CardContent className="pt-6">
                   {(salesData?.data || []).length === 0 ? (
-                    <p className="py-8 text-center text-sm text-muted-foreground">No sales yet</p>
+                    <p className="py-8 text-center text-sm text-muted-foreground">{t("customersPages.view.noSales")}</p>
                   ) : (
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead>Sale #</TableHead>
-                          <TableHead>Items</TableHead>
-                          <TableHead>Total</TableHead>
-                          <TableHead>Payment</TableHead>
-                          <TableHead>Status</TableHead>
-                          <TableHead>Date</TableHead>
+                          <TableHead>{t("sales.saleNumber")}</TableHead>
+                          <TableHead>{t("sales.items")}</TableHead>
+                          <TableHead>{t("common.total")}</TableHead>
+                          <TableHead>{t("sales.payment")}</TableHead>
+                          <TableHead>{t("common.status")}</TableHead>
+                          <TableHead>{t("common.date")}</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -807,7 +841,7 @@ export default function CustomerDetailPage() {
                             </TableCell>
                             <TableCell>
                               <Badge variant={sale.status === "COMPLETED" ? "success" : "secondary"}>
-                                {sale.status}
+                                {statusLabel(sale.status)}
                               </Badge>
                             </TableCell>
                             <TableCell>{formatDate(sale.createdAt)}</TableCell>
@@ -827,13 +861,13 @@ export default function CustomerDetailPage() {
       <Dialog open={editCustomerOpen} onOpenChange={setEditCustomerOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>Edit Customer Profile</DialogTitle>
-            <DialogDescription>Update subscriber identity, phone number, and address.</DialogDescription>
+            <DialogTitle>{t("customersPages.view.editCustomerProfile")}</DialogTitle>
+            <DialogDescription>{t("customersPages.view.editCustomerDescription")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="cust-fn">First Name *</Label>
+                <Label htmlFor="cust-fn">{t("auth.firstName")} *</Label>
                 <Input
                   id="cust-fn"
                   value={customerForm.firstName}
@@ -841,7 +875,7 @@ export default function CustomerDetailPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="cust-ln">Last Name *</Label>
+                <Label htmlFor="cust-ln">{t("auth.lastName")} *</Label>
                 <Input
                   id="cust-ln"
                   value={customerForm.lastName}
@@ -851,7 +885,7 @@ export default function CustomerDetailPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="cust-phone">Phone Number (E.164) *</Label>
+              <Label htmlFor="cust-phone">{t("customersPages.view.phoneLabel")}</Label>
               <Input
                 id="cust-phone"
                 value={customerForm.phone}
@@ -860,7 +894,7 @@ export default function CustomerDetailPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="cust-wa">WhatsApp Number</Label>
+              <Label htmlFor="cust-wa">{t("customers.whatsappNumber")}</Label>
               <Input
                 id="cust-wa"
                 value={customerForm.whatsappNumber}
@@ -869,7 +903,7 @@ export default function CustomerDetailPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="cust-email">Email Address</Label>
+              <Label htmlFor="cust-email">{t("customers.email")}</Label>
               <Input
                 id="cust-email"
                 type="email"
@@ -880,7 +914,7 @@ export default function CustomerDetailPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <Label htmlFor="cust-city">City</Label>
+                <Label htmlFor="cust-city">{t("customers.city")}</Label>
                 <Input
                   id="cust-city"
                   value={customerForm.city}
@@ -888,22 +922,22 @@ export default function CustomerDetailPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="cust-status">Account Status</Label>
+                <Label htmlFor="cust-status">{t("customersPages.view.accountStatus")}</Label>
                 <select
                   id="cust-status"
                   value={customerForm.status}
                   onChange={(e) => setCustomerForm((f) => ({ ...f, status: e.target.value }))}
                   className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
                 >
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                  <option value="suspended">Suspended</option>
+                  <option value="active">{t("common.active")}</option>
+                  <option value="inactive">{t("common.inactive")}</option>
+                  <option value="suspended">{t("customersPages.status.suspended")}</option>
                 </select>
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="cust-addr">Address</Label>
+              <Label htmlFor="cust-addr">{t("customers.address")}</Label>
               <Textarea
                 id="cust-addr"
                 rows={2}
@@ -913,7 +947,7 @@ export default function CustomerDetailPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="cust-location">Map Coordinates / GPS</Label>
+              <Label htmlFor="cust-location">{t("customersPages.view.locationLabel")}</Label>
               <div className="flex gap-2">
                 <Input
                   id="cust-location"
@@ -925,7 +959,7 @@ export default function CustomerDetailPage() {
                     const lng = parts.length === 2 && !isNaN(parts[1]) ? parts[1] : undefined;
                     setCustomerForm((f) => ({ ...f, location: val, latitude: lat, longitude: lng }));
                   }}
-                  placeholder="e.g. 34.43670, 35.84970 or Google Maps URL"
+                  placeholder={t("customersPages.view.locationPlaceholder")}
                   className="font-mono text-xs flex-1"
                 />
                 <Button
@@ -935,13 +969,13 @@ export default function CustomerDetailPage() {
                   className="shrink-0 text-primary border-primary/30 hover:bg-primary/5 text-xs h-9"
                 >
                   <MapPin className="me-1 h-3.5 w-3.5" />
-                  Pick on Map
+                  {t("customersPages.view.pickOnMap")}
                 </Button>
               </div>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="cust-notes">Notes</Label>
+              <Label htmlFor="cust-notes">{t("customers.notes")}</Label>
               <Textarea
                 id="cust-notes"
                 rows={2}
@@ -952,7 +986,7 @@ export default function CustomerDetailPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditCustomerOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={() => updateCustomerMutation.mutate(customerForm)}
@@ -961,7 +995,7 @@ export default function CustomerDetailPage() {
               {updateCustomerMutation.isPending && (
                 <Loader2 className="me-1.5 h-4 w-4 animate-spin" />
               )}
-              Save Changes
+              {t("customersPages.view.saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -980,14 +1014,14 @@ export default function CustomerDetailPage() {
       <Dialog open={renewDialogOpen} onOpenChange={setRenewDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Renew Subscription</DialogTitle>
+            <DialogTitle>{t("customersPages.view.renewTitle")}</DialogTitle>
             <DialogDescription>
-              Extend subscriber plan duration and compute the next renewal cycle.
+              {t("customersPages.view.renewDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="renew-plan">Select Plan</Label>
+              <Label htmlFor="renew-plan">{t("customersPages.view.selectPlan")}</Label>
               <select
                 id="renew-plan"
                 value={renewForm.planId}
@@ -1002,14 +1036,15 @@ export default function CustomerDetailPage() {
               >
                 {(plansData?.data || []).map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} ({p.speed}) — {formatCurrency(Number(p.price), p.currency)} / {p.durationDays}d
+                    {p.name} ({p.speed}) — {formatCurrency(Number(p.price), p.currency)}{" "}
+                    {t("customersPages.perDuration", { days: p.durationDays })}
                   </option>
                 ))}
               </select>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="renew-days">Duration to add (Days)</Label>
+              <Label htmlFor="renew-days">{t("customersPages.view.durationToAdd")}</Label>
               <Input
                 id="renew-days"
                 type="number"
@@ -1023,23 +1058,30 @@ export default function CustomerDetailPage() {
 
             {selectedSub && (
               <div className="rounded-lg bg-muted/50 p-3 text-xs space-y-1 border border-border/60">
-                <p className="text-muted-foreground">Current Expiry: {formatDate(selectedSub.expiryDate)}</p>
+                <p className="text-muted-foreground">
+                  {t("customersPages.view.currentExpiry", { date: formatDate(selectedSub.expiryDate) })}
+                </p>
                 <p className="font-semibold text-primary">
-                  Extension: +{renewForm.durationDays} days from{" "}
-                  {new Date(selectedSub.expiryDate) > new Date() ? "current expiry" : "today"}
+                  {t("customersPages.view.extension", {
+                    count: renewForm.durationDays,
+                    from:
+                      new Date(selectedSub.expiryDate) > new Date()
+                        ? t("customersPages.view.fromCurrentExpiry")
+                        : t("customersPages.view.fromToday"),
+                  })}
                 </p>
               </div>
             )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setRenewDialogOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleRenewSubmit} disabled={renewSubMutation.isPending}>
               {renewSubMutation.isPending && (
                 <Loader2 className="me-1.5 h-4 w-4 animate-spin" />
               )}
-              Confirm Renewal
+              {t("customersPages.view.confirmRenewal")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1049,14 +1091,14 @@ export default function CustomerDetailPage() {
       <Dialog open={editSubDialogOpen} onOpenChange={setEditSubDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Subscription Details</DialogTitle>
+            <DialogTitle>{t("customersPages.view.editSubTitle")}</DialogTitle>
             <DialogDescription>
-              Change plan package, adjust dates, or update payment status.
+              {t("customersPages.view.editSubDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="edit-plan">Internet Plan</Label>
+              <Label htmlFor="edit-plan">{t("customersPages.view.internetPlan")}</Label>
               <select
                 id="edit-plan"
                 value={editSubForm.planId}
@@ -1073,7 +1115,7 @@ export default function CustomerDetailPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="edit-start">Start Date</Label>
+                <Label htmlFor="edit-start">{t("customersPages.view.startDate")}</Label>
                 <Input
                   id="edit-start"
                   type="date"
@@ -1082,7 +1124,7 @@ export default function CustomerDetailPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="edit-expiry">Expiry Date</Label>
+                <Label htmlFor="edit-expiry">{t("customersPages.view.expiryDate")}</Label>
                 <Input
                   id="edit-expiry"
                   type="date"
@@ -1093,38 +1135,38 @@ export default function CustomerDetailPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="edit-pay">Payment Status</Label>
+              <Label htmlFor="edit-pay">{t("customersPages.view.paymentStatus")}</Label>
               <select
                 id="edit-pay"
                 value={editSubForm.paymentStatus}
                 onChange={(e) => setEditSubForm((f) => ({ ...f, paymentStatus: e.target.value }))}
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
               >
-                <option value="paid">Paid</option>
-                <option value="pending">Pending</option>
-                <option value="partially_paid">Partially Paid</option>
+                <option value="paid">{t("customersPages.paymentStatus.paid")}</option>
+                <option value="pending">{t("customersPages.paymentStatus.pending")}</option>
+                <option value="partially_paid">{t("customersPages.paymentStatus.partiallyPaid")}</option>
               </select>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="edit-notes">Notes / Technical info</Label>
+              <Label htmlFor="edit-notes">{t("customersPages.view.notesTech")}</Label>
               <Input
                 id="edit-notes"
                 value={editSubForm.notes}
                 onChange={(e) => setEditSubForm((f) => ({ ...f, notes: e.target.value }))}
-                placeholder="PPPoE user, port info..."
+                placeholder={t("customersPages.view.notesTechPlaceholder")}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditSubDialogOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleEditSubSubmit} disabled={updateSubMutation.isPending}>
               {updateSubMutation.isPending && (
                 <Loader2 className="me-1.5 h-4 w-4 animate-spin" />
               )}
-              Save Plan Changes
+              {t("customersPages.view.savePlanChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1134,14 +1176,14 @@ export default function CustomerDetailPage() {
       <Dialog open={assignPlanDialogOpen} onOpenChange={setAssignPlanDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Assign Internet Service Plan</DialogTitle>
+            <DialogTitle>{t("customersPages.view.assignTitle")}</DialogTitle>
             <DialogDescription>
-              Create a new subscription for this subscriber.
+              {t("customersPages.view.assignDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="assign-plan">Select Internet Plan *</Label>
+              <Label htmlFor="assign-plan">{t("customersPages.view.selectPlanLabel")}</Label>
               <select
                 id="assign-plan"
                 value={assignPlanForm.planId}
@@ -1155,13 +1197,13 @@ export default function CustomerDetailPage() {
                 }}
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
               >
-                <option value="">-- Choose a Plan --</option>
+                <option value="">{t("customersPages.view.choosePlan")}</option>
                 {(plansData?.data || [])
                   .filter((p) => p.isActive)
                   .map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.speed}) — {formatCurrency(Number(p.price), p.currency)} /{" "}
-                      {p.durationDays}d
+                      {p.name} ({p.speed}) — {formatCurrency(Number(p.price), p.currency)}{" "}
+                      {t("customersPages.perDuration", { days: p.durationDays })}
                     </option>
                   ))}
               </select>
@@ -1169,7 +1211,7 @@ export default function CustomerDetailPage() {
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
-                <Label htmlFor="assign-start">Start Date *</Label>
+                <Label htmlFor="assign-start">{t("customersPages.view.startDateRequired")}</Label>
                 <Input
                   id="assign-start"
                   type="date"
@@ -1180,7 +1222,7 @@ export default function CustomerDetailPage() {
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="assign-dur">Duration (Days)</Label>
+                <Label htmlFor="assign-dur">{t("customersPages.view.durationLabel")}</Label>
                 <Input
                   id="assign-dur"
                   type="number"
@@ -1194,7 +1236,7 @@ export default function CustomerDetailPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="assign-pay">Payment Status</Label>
+              <Label htmlFor="assign-pay">{t("customersPages.view.paymentStatus")}</Label>
               <select
                 id="assign-pay"
                 value={assignPlanForm.paymentStatus}
@@ -1203,27 +1245,27 @@ export default function CustomerDetailPage() {
                 }
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
               >
-                <option value="paid">Paid (Activate immediately)</option>
-                <option value="pending">Pending</option>
-                <option value="partially_paid">Partially Paid</option>
+                <option value="paid">{t("customersPages.paymentStatus.paidImmediate")}</option>
+                <option value="pending">{t("customersPages.paymentStatus.pending")}</option>
+                <option value="partially_paid">{t("customersPages.paymentStatus.partiallyPaid")}</option>
               </select>
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="assign-notes">Notes / Device credentials</Label>
+              <Label htmlFor="assign-notes">{t("customersPages.view.deviceNotes")}</Label>
               <Input
                 id="assign-notes"
                 value={assignPlanForm.notes}
                 onChange={(e) =>
                   setAssignPlanForm((f) => ({ ...f, notes: e.target.value }))
                 }
-                placeholder="PPPoE username, fiber port..."
+                placeholder={t("customersPages.view.deviceNotesPlaceholder")}
               />
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAssignPlanDialogOpen(false)}>
-              Cancel
+              {t("common.cancel")}
             </Button>
             <Button
               onClick={handleAssignPlanSubmit}
@@ -1232,7 +1274,7 @@ export default function CustomerDetailPage() {
               {createSubMutation.isPending && (
                 <Loader2 className="me-1.5 h-4 w-4 animate-spin" />
               )}
-              Assign Plan
+              {t("customersPages.view.assignPlan")}
             </Button>
           </DialogFooter>
         </DialogContent>

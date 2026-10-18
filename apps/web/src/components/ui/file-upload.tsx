@@ -12,6 +12,10 @@ interface FileUploadProps {
   maxSize?: number;
   onFilesChange: (files: File[]) => void;
   className?: string;
+  /** Dropzone headline. Defaults to English so existing callers are unchanged. */
+  title?: string;
+  /** Dropzone subline describing limits. */
+  hint?: string;
 }
 
 export function FileUpload({
@@ -21,6 +25,8 @@ export function FileUpload({
   maxSize = 10 * 1024 * 1024,
   onFilesChange,
   className,
+  title = "Click or drag files here",
+  hint,
 }: FileUploadProps) {
   const [files, setFiles] = React.useState<File[]>([]);
   const [isDragging, setIsDragging] = React.useState(false);
@@ -89,9 +95,9 @@ export function FileUpload({
         )}
       >
         <Upload className="mb-2 h-8 w-8 text-muted-foreground" />
-        <p className="text-sm font-medium">Click or drag files here</p>
+        <p className="text-sm font-medium">{title}</p>
         <p className="text-xs text-muted-foreground mt-1">
-          Max {maxFiles} file(s), up to {formatSize(maxSize)} each
+          {hint ?? `Max ${maxFiles} file(s), up to ${formatSize(maxSize)} each`}
         </p>
         <input
           ref={inputRef}

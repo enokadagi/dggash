@@ -4,8 +4,10 @@ import * as React from "react";
 import Link from "next/link";
 import { useProducts, useProductLookup, useCustomerSearch, type Product, type Customer } from "@/hooks/api/use-products";
 import { useCreateSale, type Sale } from "@/hooks/api/use-sales";
+import { useCreateCustomer } from "@/hooks/api/use-customers";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useWedgeScanner } from "@/hooks/use-wedge-scanner";
+import { useLocalization } from "@/hooks/use-localization";
 import { lookupProductByCode } from "@/lib/scanner/product-lookup";
 import { ReceiptPrintButton } from "@/components/printer/receipt-print-button";
 import { InvoicePrintButton } from "@/components/invoice/invoice-print-button";
@@ -16,7 +18,16 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -32,6 +43,7 @@ import {
   Minus,
   Trash2,
   User,
+  UserPlus,
   PackageSearch,
   Check,
   ReceiptText,
@@ -48,6 +60,7 @@ interface CartLine {
 const PAYMENT_METHODS = ["cash", "card", "bank_transfer", "credit", "other"] as const;
 
 export default function PosPage() {
+  const { t } = useLocalization();
   const scannerRef = React.useRef<HTMLInputElement>(null);
   const [q, setQ] = React.useState("");
   const debouncedQ = useDebounce(q, 300);
@@ -62,6 +75,9 @@ export default function PosPage() {
   const [customerQuery, setCustomerQuery] = React.useState("");
   const [paymentMethod, setPaymentMethod] = React.useState("cash");
   const [notes, setNotes] = React.useState("");
+  const [customerDialogOpen, setCustomerDialogOpen] = React.useState(false);
+  const [newCustomer, setNewCustomer] = React.useState({ firstName: "", lastName: "", phone: "" });
+  const [customerFormError, setCustomerFormError] = React.useState<string | null>(null);
   const [lastReceipt, setLastReceipt] = React.useState<null | {
     saleNumber: string;
     totalAmount: number;
@@ -75,6 +91,7 @@ export default function PosPage() {
   const quickItems = quickProducts.data?.data || [];
   const customerSearch = useCustomerSearch(customerQuery);
   const createSale = useCreateSale();
+  const createCustomer = useCreateCustomer();
 
   const customerResults = customerSearch.data || [];
 
@@ -143,6 +160,36 @@ export default function PosPage() {
   const total = cart.reduce((sum, l) => sum + Number(l.product.sellingPrice) * l.quantity, 0);
   const currency = cart[0]?.product.currency || "USD";
   const isCheckingOut = createSale.isPending;
+
+  const handleCreateCustomer = async () => {
+    setCustomerFormError(null);
+    if (!/^\+[1-9]\d{1,14}$/.test(newCustomer.phone.trim())) {
+      setCustomerFormError(t("pos.phoneRequired"));
+      return;
+    }
+    if (!newCustomer.firstName.trim() || !newCustomer.lastName.trim()) {
+      setCustomerFormError(t("pos.customerNameRequired"));
+      return;
+    }
+    try {
+      const created = await createCustomer.mutateAsync({
+        phone: newCustomer.phone.trim(),
+        firstName: newCustomer.firstName.trim(),
+        lastName: newCustomer.lastName.trim(),
+      });
+      setCustomer({
+        id: created.id,
+        firstName: created.firstName,
+        lastName: created.lastName,
+        phone: created.phone,
+      });
+      setCustomerDialogOpen(false);
+      setNewCustomer({ firstName: "", lastName: "", phone: "" });
+      setCustomerQuery("");
+    } catch {
+      // toast handled by the mutation
+    }
+  };
 
   /**
    * Resolves a code through the canonical lookup shared with the camera scanner,
@@ -232,15 +279,15 @@ export default function PosPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Point of Sale"
-        description="Scan barcodes or search to build the cart, then check out"
+        title={t("pos.title")}
+        description={t("pos.subtitle")}
         actions={
           <div className="flex items-center gap-3">
             <ScannerStatus status={wedge.status} lastScanned={wedge.lastScanned} />
             <Button asChild variant="outline">
               <Link href="/sales">
                 <ReceiptText className="me-2 h-4 w-4" />
-                Sales History
+                {t("sales.history")}
               </Link>
             </Button>
           </div>
@@ -253,7 +300,7 @@ export default function PosPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <ScanLine className="h-4 w-4" />
-                Scan or Search
+                {t("pos.scanTitle")}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -266,21 +313,21 @@ export default function PosPage() {
                     setLookupError(null);
                   }}
                   onKeyDown={(e) => e.key === "Enter" && scanOrSearch()}
-                  placeholder="Scan barcode or type product name / SKU..."
+                  placeholder={t("pos.scanPlaceholder")}
                   className="flex-1"
                   autoFocus
                 />
                 <Button onClick={scanOrSearch} disabled={!q.trim()}>
-                  Add
+                  {t("pos.scanOrSearch")}
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
                   onClick={() => setCameraOpen(true)}
-                  title="Scan with the device camera instead of a USB scanner"
+                  title={t("pos.camera")}
                 >
                   <Camera className="me-2 h-4 w-4" />
-                  Camera
+                  {t("pos.camera")}
                 </Button>
               </div>
 
@@ -292,8 +339,8 @@ export default function PosPage() {
                 onDetected={(value) => {
                   void addByCode(value);
                 }}
-                title="Scan product"
-                description="Point the camera at a barcode or QR code, or use a USB scanner in the field below."
+                title={t("pos.scanTitle")}
+                description={t("pos.scanPlaceholder")}
               />
 
               {/* Scan feedback. Always visible (not gated on the search box) so
@@ -315,26 +362,22 @@ export default function PosPage() {
                 >
                   <Check className="h-4 w-4 shrink-0 text-success" />
                   <span>
-                    Added <strong>{lastScannedProduct.name}</strong> (SKU{" "}
-                    {lastScannedProduct.sku})
+                    <strong>{lastScannedProduct.name}</strong> ({lastScannedProduct.sku})
                   </span>
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">
-                  USB scanner (HENEX 2D, keyboard mode) is live — just scan. Human typing never
-                  triggers a lookup.
-                </p>
+                <p className="text-xs text-muted-foreground">{t("pos.scanHint")}</p>
               )}
 
               {debouncedQ && (
                 <div>
                   {lookup.isLoading && (
-                    <p className="text-sm text-muted-foreground">Looking up...</p>
+                    <p className="text-sm text-muted-foreground">{t("pos.lookingUp")}</p>
                   )}
                   {!lookup.isLoading && !lookup.data && (
                     <div className="flex items-center gap-2 rounded-md border p-4 text-sm text-muted-foreground">
                       <PackageSearch className="h-4 w-4" />
-                      No product found for &quot;{debouncedQ}&quot;
+                      {t("pos.noProductFound")} &quot;{debouncedQ}&quot;
                     </div>
                   )}
                   {!lookup.isLoading && lookup.data && (
@@ -342,22 +385,22 @@ export default function PosPage() {
                       <div className="flex-1">
                         <p className="font-medium">{lookup.data.name}</p>
                         <p className="text-sm text-muted-foreground">
-                          SKU {lookup.data.sku} · Stock {lookup.data.currentStock}
+                          SKU {lookup.data.sku} · {lookup.data.currentStock} {t("pos.inStock")}
                         </p>
                       </div>
                       <p className="font-semibold tabular-nums">
                         {formatCurrency(Number(lookup.data.sellingPrice), lookup.data.currency)}
                       </p>
-<Button
-                          size="sm"
-                          onClick={() => addToCart(lookup.data!)}
-                          disabled={lookup.data.currentStock <= 0 || !lookup.data.isActive}
-                        >
-                          <Plus className="me-1 h-4 w-4" />
-                          Add
-                        </Button>
-                      </div>
-                    )}
+                      <Button
+                        size="sm"
+                        onClick={() => addToCart(lookup.data!)}
+                        disabled={lookup.data.currentStock <= 0 || !lookup.data.isActive}
+                      >
+                        <Plus className="me-1 h-4 w-4" />
+                        {t("common.add")}
+                      </Button>
+                    </div>
+                  )}
                   {lookupError ? (
                     <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
                       <PackageSearch className="h-4 w-4 shrink-0" />
@@ -373,7 +416,7 @@ export default function PosPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Layers className="h-4 w-4" />
-                Quick Add
+                {t("pos.quickAdd")}
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -385,7 +428,7 @@ export default function PosPage() {
                 </div>
               ) : quickItems.length === 0 ? (
                 <p className="py-4 text-center text-sm text-muted-foreground">
-                  No products available yet.
+                  {t("pos.noProducts")}
                 </p>
               ) : (
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
@@ -395,7 +438,7 @@ export default function PosPage() {
                       type="button"
                       disabled={p.currentStock <= 0 || !p.isActive}
                       onClick={() => addToCart(p)}
-                      className="flex h-full flex-col items-start justify-between rounded-md border p-3 text-left transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      className="flex h-full flex-col items-start justify-between rounded-md border p-3 text-start transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       <div className="w-full min-w-0">
                         <p className="truncate text-sm font-medium">{p.name}</p>
@@ -406,7 +449,7 @@ export default function PosPage() {
                           {formatCurrency(Number(p.sellingPrice), p.currency)}
                         </span>
                         <span className="shrink-0 text-[10px] text-muted-foreground">
-                          {p.currentStock} in stock
+                          {p.currentStock} {t("pos.inStock")}
                         </span>
                       </div>
                     </button>
@@ -417,11 +460,25 @@ export default function PosPage() {
           </Card>
 
           <Card>
-            <CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0">
               <CardTitle className="flex items-center gap-2 text-base">
                 <User className="h-4 w-4" />
-                Customer (optional)
+                {t("pos.customerOptional")}
               </CardTitle>
+              {!customer ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setCustomerFormError(null);
+                    setCustomerDialogOpen(true);
+                  }}
+                >
+                  <UserPlus className="me-1 h-4 w-4" />
+                  {t("pos.addCustomer")}
+                </Button>
+              ) : null}
             </CardHeader>
             <CardContent className="space-y-3">
               {customer ? (
@@ -433,7 +490,7 @@ export default function PosPage() {
                     <p className="text-sm text-muted-foreground">{customer.phone}</p>
                   </div>
                   <Button variant="ghost" size="sm" onClick={() => setCustomer(null)}>
-                    Remove
+                    {t("pos.remove")}
                   </Button>
                 </div>
               ) : (
@@ -441,7 +498,7 @@ export default function PosPage() {
                   <Input
                     value={customerQuery}
                     onChange={(e) => setCustomerQuery(e.target.value)}
-                    placeholder="Search customer by name or phone..."
+                    placeholder={t("pos.searchCustomerPlaceholder")}
                   />
                   {customerResults.length > 0 && (
                     <ul className="divide-y rounded-md border">
@@ -474,27 +531,33 @@ export default function PosPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <ShoppingCart className="h-4 w-4" />
-              Current Sale
+              {t("pos.currentSale")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {lastReceipt ? (
               <div className="space-y-3">
                 <div className="rounded-md border border-success/30 bg-success/10 p-4 text-center">
-                  <p className="text-sm font-medium text-success">Sale completed</p>
+                  <p className="text-sm font-medium text-success">{t("pos.saleCompleted")}</p>
                   <p className="mt-1 font-mono text-lg font-bold">{lastReceipt.saleNumber}</p>
                   <p className="mt-1 text-2xl font-bold">
                     {formatCurrency(lastReceipt.totalAmount, lastReceipt.currency)}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {lastReceipt.items} line item{lastReceipt.items === 1 ? "" : "s"}
+                    {lastReceipt.items} {t("sales.items")}
                   </p>
+                  {lastReceipt.detail.customer ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {t("pos.customer")}: {lastReceipt.detail.customer.firstName}{" "}
+                      {lastReceipt.detail.customer.lastName}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="flex flex-col gap-2">
                   {/* Primary company document output: a real A4 invoice. */}
                   <InvoicePrintButton
                     sale={lastReceipt.detail as unknown as InvoiceSale}
-                    label="Print A4 Invoice"
+                    label={t("sales.title")}
                   />
                   {/* Optional thermal receipt, independent of A4 printing. */}
                   <ReceiptPrintButton
@@ -522,14 +585,14 @@ export default function PosPage() {
                     }}
                   >
                     <MessageCircle className="me-2 h-4 w-4 text-green-600" />
-                    Send WhatsApp Receipt (Free)
+                    {t("pos.sendWhatsapp")}
                   </Button>
                   <div className="flex gap-2">
                     <Button className="flex-1" onClick={resetAfterReceipt}>
-                      New Sale
+                      {t("pos.newSale")}
                     </Button>
                     <Button asChild variant="outline">
-                      <Link href={`/sales/detail?id=${encodeURIComponent(createSale.data?.sale.id ?? "")}`}>View</Link>
+                      <Link href={`/sales/detail?id=${encodeURIComponent(createSale.data?.sale.id ?? "")}`}>{t("pos.view")}</Link>
                     </Button>
                   </div>
                 </div>
@@ -538,7 +601,7 @@ export default function PosPage() {
               <>
                 {cart.length === 0 ? (
                   <p className="py-8 text-center text-sm text-muted-foreground">
-                    Scan or search a product to start the sale.
+                    {t("pos.startSale")}
                   </p>
                 ) : (
                   <ul className="divide-y">
@@ -552,7 +615,7 @@ export default function PosPage() {
                             variant="ghost"
                             size="icon-sm"
                             onClick={() => removeLine(line.product.id)}
-                            aria-label={`Remove ${line.product.name}`}
+                            aria-label={`${t("pos.remove")} ${line.product.name}`}
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
@@ -596,7 +659,7 @@ export default function PosPage() {
                 <div className="space-y-4 border-t pt-4">
                   <div>
                     <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      Payment method
+                      {t("pos.paymentMethodLabel")}
                     </p>
                     <Select value={paymentMethod} onValueChange={setPaymentMethod}>
                       <SelectTrigger className="h-9 w-full">
@@ -614,12 +677,12 @@ export default function PosPage() {
                   <Input
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Notes (optional)"
+                    placeholder={t("pos.notesPlaceholder")}
                     className="h-9 w-full"
                   />
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">
-                      {cart.length} item{cart.length === 1 ? "" : "s"}
+                      {cart.length} {t("sales.items")}
                       {customer ? " · " + (customer.firstName || "") + " " + (customer.lastName || "") : ""}
                     </p>
                     <p className="text-2xl font-bold tabular-nums">
@@ -632,7 +695,7 @@ export default function PosPage() {
                     onClick={checkout}
                     disabled={cart.length === 0 || isCheckingOut}
                   >
-                    {isCheckingOut ? "Completing..." : "Complete Sale"}
+                    {isCheckingOut ? t("pos.completing") : t("pos.completeSale")}
                   </Button>
                 </div>
               </>
@@ -640,6 +703,56 @@ export default function PosPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("pos.newCustomer")}</DialogTitle>
+            <DialogDescription>{t("pos.addCustomer")}</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="pos-customer-phone">{t("customers.phone")}</Label>
+              <Input
+                id="pos-customer-phone"
+                value={newCustomer.phone}
+                onChange={(e) => setNewCustomer((prev) => ({ ...prev, phone: e.target.value }))}
+                placeholder="+96170000000"
+                inputMode="tel"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="pos-customer-first">{t("auth.firstName")}</Label>
+                <Input
+                  id="pos-customer-first"
+                  value={newCustomer.firstName}
+                  onChange={(e) => setNewCustomer((prev) => ({ ...prev, firstName: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="pos-customer-last">{t("auth.lastName")}</Label>
+                <Input
+                  id="pos-customer-last"
+                  value={newCustomer.lastName}
+                  onChange={(e) => setNewCustomer((prev) => ({ ...prev, lastName: e.target.value }))}
+                />
+              </div>
+            </div>
+            {customerFormError ? (
+              <p className="text-xs text-destructive">{customerFormError}</p>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCustomerDialogOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button onClick={handleCreateCustomer} disabled={createCustomer.isPending}>
+              {createCustomer.isPending ? t("pos.creating") : t("pos.createCustomer")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

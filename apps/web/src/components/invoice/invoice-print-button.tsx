@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCompanyProfile } from "@/hooks/api/use-company-settings";
+import { usePrintSettings } from "@/hooks/api/use-print-settings";
 import { A4Invoice, type InvoiceSale } from "./a4-invoice";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +56,7 @@ export function InvoicePrintButton({
   const [open, setOpen] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
   const company = useCompanyProfile();
+  const print = usePrintSettings();
   const cleanupRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
@@ -124,7 +126,7 @@ export function InvoicePrintButton({
       {mounted && open
         ? createPortal(
             <div data-a4-print-root className="fixed inset-0 z-[100] overflow-auto bg-background p-4">
-              <A4Invoice sale={sale} company={company.data} reprint={reprint} />
+              <A4Invoice sale={sale} company={company.data} reprint={reprint} options={print.data?.a4} />
             </div>,
             document.body
           )

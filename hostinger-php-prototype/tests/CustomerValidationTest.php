@@ -118,6 +118,18 @@ $patch = awikValidateCustomerInput(['email' => null, 'notes' => null, 'firstName
 awikCustomerTestAssert(array_key_exists('email', $patch) && $patch['email'] === null, 'nullable optional fields must be preserved');
 awikCustomerTestAssert($patch['firstName'] === '', 'update DTO permits empty optional name strings');
 
+$clearedOptionals = awikValidateCustomerInput([
+    'phone' => '+96170123456', 'email' => '', 'whatsappNumber' => '',
+    'firstName' => 'Sam', 'lastName' => 'Customer',
+], true);
+awikCustomerTestAssert($clearedOptionals['email'] === '' && $clearedOptionals['whatsappNumber'] === '', 'empty optional email/whatsapp must be accepted on create');
+
+$clearedPatch = awikValidateCustomerInput(['email' => '', 'whatsappNumber' => ''], false);
+awikCustomerTestAssert($clearedPatch['email'] === '' && $clearedPatch['whatsappNumber'] === '', 'clearing email/whatsapp on update must be accepted');
+
+$clearedUser = awikValidateManagedUserInput(['email' => ''], false);
+awikCustomerTestAssert($clearedUser['email'] === '', 'clearing a managed user email on update must be accepted');
+
 $defaults = awikValidateCustomerQuery([]);
 awikCustomerTestAssert($defaults['page'] === 1 && $defaults['limit'] === 20, 'pagination defaults mismatch');
 awikCustomerTestAssert($defaults['sortBy'] === 'createdAt' && $defaults['sortOrder'] === 'desc', 'sort defaults mismatch');

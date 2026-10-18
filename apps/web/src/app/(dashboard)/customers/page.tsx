@@ -5,6 +5,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import Link from "next/link";
 import { Plus, Eye, Trash2 } from "lucide-react";
 import { useCustomers, useDeleteCustomer, type Customer } from "@/hooks/api/use-customers";
+import { useLocalization } from "@/hooks/use-localization";
 import { usePagination } from "@/hooks/use-pagination";
 import { useDebounce } from "@/hooks/use-debounce";
 import { PageHeader } from "@/components/ui/page-header";
@@ -21,6 +22,7 @@ function PaymentBadge({ paymentStatus }: { paymentStatus?: string }) {
 }
 
 function ExpiryCell({ customer }: { customer: Customer }) {
+  const { t } = useLocalization();
   const sub = customer.subscriptions?.[0];
   if (!sub?.expiryDate) return <span className="text-muted-foreground">—</span>;
   const expiry = new Date(sub.expiryDate);
@@ -31,13 +33,14 @@ function ExpiryCell({ customer }: { customer: Customer }) {
   return (
     <div className="flex flex-col">
       <span>{formatDate(sub.expiryDate)}</span>
-      {expired && <span className="text-xs font-medium text-destructive">Expired</span>}
-      {!expired && in5Days && <span className="text-xs font-medium text-warning">Expiring soon</span>}
+      {expired && <span className="text-xs font-medium text-destructive">{t("customersPages.list.expired")}</span>}
+      {!expired && in5Days && <span className="text-xs font-medium text-warning">{t("customersPages.list.expiringSoon")}</span>}
     </div>
   );
 }
 
 export default function CustomersPage() {
+  const { t } = useLocalization();
   const { page, limit, setPage } = usePagination();
   const [search, setSearch] = React.useState("");
   const debouncedSearch = useDebounce(search);
@@ -56,7 +59,7 @@ export default function CustomersPage() {
   const columns: ColumnDef<Customer>[] = [
     {
       accessorKey: "firstName",
-      header: "Customer",
+      header: t("customersPages.list.customer"),
       cell: ({ row }) => (
         <Link href={`/customers/view?id=${encodeURIComponent(row.original.id)}`} className="flex flex-col hover:underline">
           <span className="font-medium">{row.original.firstName} {row.original.lastName}</span>
@@ -66,7 +69,7 @@ export default function CustomersPage() {
     },
     {
       accessorKey: "whatsappNumber",
-      header: "WhatsApp",
+      header: t("customersPages.list.whatsapp"),
       cell: ({ row }) => (
         <span className="text-sm">
           {row.original.whatsappNumber || <span className="text-muted-foreground">—</span>}
@@ -75,7 +78,7 @@ export default function CustomersPage() {
     },
     {
       accessorKey: "plan",
-      header: "Plan",
+      header: t("customersPages.list.plan"),
       cell: ({ row }) => {
         const sub = row.original.subscriptions?.[0];
         return <span>{sub?.plan?.name || "—"}</span>;
@@ -83,27 +86,27 @@ export default function CustomersPage() {
     },
     {
       accessorKey: "expiryDate",
-      header: "Expiry",
+      header: t("customersPages.list.expiry"),
       cell: ({ row }) => <ExpiryCell customer={row.original} />,
     },
     {
       accessorKey: "paymentStatus",
-      header: "Payment",
+      header: t("customersPages.list.payment"),
       cell: ({ row }) => <PaymentBadge paymentStatus={row.original.subscriptions?.[0]?.paymentStatus} />,
     },
     {
       accessorKey: "status",
-      header: "Status",
+      header: t("common.status"),
       cell: ({ row }) => <StatusBadge status={row.original.status} />,
     },
     {
       accessorKey: "city",
-      header: "City",
+      header: t("customers.city"),
       cell: ({ row }) => <span className="text-sm">{row.original.city || "—"}</span>,
     },
     {
       accessorKey: "createdAt",
-      header: "Added",
+      header: t("customersPages.list.added"),
       cell: ({ row }) => <span className="text-sm text-muted-foreground">{formatDate(row.original.createdAt)}</span>,
     },
   ];
@@ -111,13 +114,13 @@ export default function CustomersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Customers"
-        description="Contact list, subscriptions, and payment status"
+        title={t("customersPages.list.title")}
+        description={t("customersPages.list.description")}
         actions={
           <Button asChild>
             <Link href="/customers/new">
               <Plus className="me-2 h-4 w-4" />
-              Add Customer
+              {t("customers.addCustomer")}
             </Link>
           </Button>
         }
@@ -129,23 +132,23 @@ export default function CustomersPage() {
         <ErrorState message={error.message} onRetry={() => refetch()} />
       ) : customers.length === 0 ? (
         <EmptyState
-          message={debouncedSearch ? "No customers match your search" : "No customers yet"}
-          actionLabel="Add Customer"
+          message={debouncedSearch ? t("customersPages.list.noSearchMatch") : t("customersPages.list.noCustomers")}
+          actionLabel={t("customers.addCustomer")}
           onAction={() => (window.location.href = "/customers/new")}
         />
       ) : (
         <DataTable
           columns={columns}
           data={customers}
-          searchPlaceholder="Search by name, phone, or city..."
+          searchPlaceholder={t("customersPages.list.searchPlaceholder")}
           onSearch={setSearch}
           page={page}
           totalPages={totalPages}
           totalItems={data?.total}
           onPageChange={setPage}
           actions={(row) => [
-            { label: "View", onClick: () => (window.location.href = `/customers/view?id=${encodeURIComponent(row.id)}`), icon: <Eye className="h-4 w-4" /> },
-            { label: "Delete", onClick: () => setDeleteId(row.id), icon: <Trash2 className="h-4 w-4" />, destructive: true },
+            { label: t("common.view"), onClick: () => (window.location.href = `/customers/view?id=${encodeURIComponent(row.id)}`), icon: <Eye className="h-4 w-4" /> },
+            { label: t("common.delete"), onClick: () => setDeleteId(row.id), icon: <Trash2 className="h-4 w-4" />, destructive: true },
           ]}
         />
       )}
@@ -153,9 +156,9 @@ export default function CustomersPage() {
       <ConfirmDialog
         open={!!deleteId}
         onOpenChange={() => setDeleteId(null)}
-        title="Delete customer"
-        description="This will permanently remove the customer record. This action cannot be undone."
-        confirmLabel="Delete"
+        title={t("customersPages.list.deleteTitle")}
+        description={t("customersPages.list.deleteDescription")}
+        confirmLabel={t("common.delete")}
         destructive
         onConfirm={() => {
           if (deleteId) deleteMutation.mutate(deleteId);

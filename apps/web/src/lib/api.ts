@@ -125,7 +125,10 @@ export async function fetchApi<T>(
       } else {
         processQueue(new Error("Token refresh failed"));
         clearStoredTokens();
-        if (typeof window !== "undefined") {
+        // Only force a navigation when we are not already on an auth screen.
+        // A hard redirect here while the login request is in flight aborts it
+        // and leaves the user stuck on the login page.
+        if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
           window.location.href = "/login";
         }
         throw { message: "Session expired", statusCode: 401 };

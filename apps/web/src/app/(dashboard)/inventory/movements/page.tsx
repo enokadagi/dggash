@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { usePagination } from "@/hooks/use-pagination";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useLocalization } from "@/hooks/use-localization";
 import { PageHeader } from "@/components/ui/page-header";
 import { DataTable } from "@/components/ui/data-table";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +45,7 @@ function MovementBadge({ type }: { type: string }) {
 }
 
 export default function InventoryMovementsPage() {
+  const { t } = useLocalization();
   const { page, limit, setPage } = usePagination();
   const [search, setSearch] = React.useState("");
   const debouncedSearch = useDebounce(search);
@@ -67,7 +69,7 @@ export default function InventoryMovementsPage() {
   const columns: ColumnDef<StockMovement>[] = [
     {
       accessorKey: "product.name",
-      header: "Product",
+      header: t("inventoryPage.movements.product"),
       cell: ({ row }) => (
         <div>
           <span className="font-medium">{row.original.product?.name || "—"}</span>
@@ -79,12 +81,12 @@ export default function InventoryMovementsPage() {
     },
     {
       accessorKey: "movementType",
-      header: "Type",
+      header: t("inventoryPage.movements.type"),
       cell: ({ row }) => <MovementBadge type={row.original.movementType} />,
     },
     {
       accessorKey: "quantity",
-      header: "Change",
+      header: t("inventoryPage.movements.change"),
       cell: ({ row }) => {
         const delta = row.original.newStock - row.original.previousStock;
         return (
@@ -97,7 +99,7 @@ export default function InventoryMovementsPage() {
     },
     {
       accessorKey: "previousStock",
-      header: "Stock",
+      header: t("inventoryPage.movements.stock"),
       cell: ({ row }) => (
         <span className="tabular-nums text-muted-foreground">
           {row.original.previousStock} → {row.original.newStock}
@@ -106,12 +108,12 @@ export default function InventoryMovementsPage() {
     },
     {
       accessorKey: "reference",
-      header: "Reference",
+      header: t("inventoryPage.movements.reference"),
       cell: ({ row }) => row.original.reference || "—",
     },
     {
       accessorKey: "user.firstName",
-      header: "By",
+      header: t("inventoryPage.movements.by"),
       cell: ({ row }) => {
         const u = row.original.user;
         return u ? `${u.firstName} ${u.lastName ?? ""}`.trim() : "—";
@@ -119,7 +121,7 @@ export default function InventoryMovementsPage() {
     },
     {
       accessorKey: "createdAt",
-      header: "Date",
+      header: t("inventoryPage.movements.date"),
       cell: ({ row }) => formatDate(row.original.createdAt),
     },
   ];
@@ -127,26 +129,26 @@ export default function InventoryMovementsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Stock Movements"
-        description="Every purchase, sale, adjustment, and correction to product stock levels"
+        title={t("inventoryPage.movements.title")}
+        description={t("inventoryPage.movements.description")}
       />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Movements" value={data?.total || 0} icon={ArrowRightLeft} />
-        <StatCard title="Stock Additions" value={inboundCount} icon={TrendingUp} />
-        <StatCard title="Stock Reductions" value={outboundCount} icon={TrendingDown} />
-        <StatCard title="Corrections" value={correctionCount} icon={RotateCw} />
+        <StatCard title={t("inventoryPage.movements.totalMovements")} value={data?.total || 0} icon={ArrowRightLeft} />
+        <StatCard title={t("inventoryPage.movements.stockAdditions")} value={inboundCount} icon={TrendingUp} />
+        <StatCard title={t("inventoryPage.movements.stockReductions")} value={outboundCount} icon={TrendingDown} />
+        <StatCard title={t("inventoryPage.movements.corrections")} value={correctionCount} icon={RotateCw} />
       </div>
       {isLoading ? (
-        <LoadingState message="Loading movements..." />
+        <LoadingState message={t("inventoryPage.movements.loading")} />
       ) : error ? (
-        <ErrorState message="Failed to load movements. Try again." onRetry={() => refetch()} />
+        <ErrorState message={t("inventoryPage.movements.loadError")} onRetry={() => refetch()} />
       ) : movements.length === 0 ? (
-        <EmptyState message="No movements yet. Movements are recorded automatically when products are stocked, sold, adjusted, or corrected." />
+        <EmptyState message={t("inventoryPage.movements.empty")} />
       ) : (
         <DataTable
           columns={columns}
           data={movements}
-          searchPlaceholder="Search movements..."
+          searchPlaceholder={t("inventoryPage.movements.search")}
           onSearch={setSearch}
           page={page}
           totalPages={data ? Math.ceil(data.total / (data.limit || 1)) : 1}

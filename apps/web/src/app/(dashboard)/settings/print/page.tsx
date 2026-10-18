@@ -15,6 +15,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { A4Invoice, type InvoiceSale } from "@/components/invoice/a4-invoice";
 import { api } from "@/lib/api";
+import { useLocalization } from "@/hooks/use-localization";
 import { Save, CheckCircle2, AlertCircle, Printer, Eye, FileText, ReceiptText } from "lucide-react";
 
 interface SettingEntry {
@@ -107,6 +108,7 @@ const SAMPLE_SALE: InvoiceSale = {
 };
 
 export default function PrintDesignPage() {
+  const { t } = useLocalization();
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState(false);
@@ -151,7 +153,7 @@ export default function PrintDesignPage() {
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
-      setError(err.message || "Failed to save print settings");
+      setError(err.message || t("settingsPage.print.saveError"));
     } finally {
       setSaving(false);
     }
@@ -161,7 +163,7 @@ export default function PrintDesignPage() {
     window.print();
   };
 
-  if (isLoading) return <LoadingState message="Loading print settings..." />;
+  if (isLoading) return <LoadingState message={t("settingsPage.print.loading")} />;
   if (fetchError) return <ErrorState message={(fetchError as Error).message} onRetry={refetch} />;
 
   const sampleCompany = {
@@ -179,17 +181,17 @@ export default function PrintDesignPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Print Design & Settings"
-        description="Configure A4 and Thermal receipt printing layouts with live interactive preview"
+        title={t("settingsPage.print.title")}
+        description={t("settingsPage.print.description")}
         actions={
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={handlePrintTest}>
               <Printer className="me-2 h-4 w-4" />
-              Print Test Page
+              {t("settingsPage.print.printTest")}
             </Button>
             <Button onClick={handleSave} disabled={saving}>
               <Save className="me-2 h-4 w-4" />
-              {saving ? "Saving..." : "Save Changes"}
+              {saving ? t("settingsPage.saving") : t("profile.saveChanges")}
             </Button>
           </div>
         }
@@ -197,7 +199,7 @@ export default function PrintDesignPage() {
       {success && (
         <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
           <CheckCircle2 className="h-4 w-4" />
-          Print settings saved successfully
+          {t("settingsPage.print.savedSuccess")}
         </div>
       )}
       {error && (
@@ -214,15 +216,15 @@ export default function PrintDesignPage() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <FileText className="h-4 w-4" />
-                A4 Printer (Invoice) Layout
+                {t("settingsPage.print.a4Title")}
               </CardTitle>
-              <CardDescription>Configure A4 invoice columns, margins, and visibility</CardDescription>
+              <CardDescription>{t("settingsPage.print.a4Description")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="a4Logo">Show Logo</Label>
+                    <Label htmlFor="a4Logo">{t("settingsPage.print.showLogo")}</Label>
                     <Switch
                       id="a4Logo"
                       checked={form["print.a4.showLogo"] === "true"}
@@ -234,7 +236,7 @@ export default function PrintDesignPage() {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="a4Sku">Show SKU</Label>
+                    <Label htmlFor="a4Sku">{t("settingsPage.print.showSku")}</Label>
                     <Switch
                       id="a4Sku"
                       checked={form["print.a4.showSku"] === "true"}
@@ -246,7 +248,7 @@ export default function PrintDesignPage() {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="a4Barcode">Show Barcode</Label>
+                    <Label htmlFor="a4Barcode">{t("settingsPage.print.showBarcode")}</Label>
                     <Switch
                       id="a4Barcode"
                       checked={form["print.a4.showBarcode"] === "true"}
@@ -258,7 +260,7 @@ export default function PrintDesignPage() {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="a4Tax">Show Tax Column</Label>
+                    <Label htmlFor="a4Tax">{t("settingsPage.print.showTax")}</Label>
                     <Switch
                       id="a4Tax"
                       checked={form["print.a4.showTax"] === "true"}
@@ -270,7 +272,7 @@ export default function PrintDesignPage() {
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="a4Discount">Show Discount Column</Label>
+                    <Label htmlFor="a4Discount">{t("settingsPage.print.showDiscount")}</Label>
                     <Switch
                       id="a4Discount"
                       checked={form["print.a4.showDiscount"] === "true"}
@@ -284,7 +286,7 @@ export default function PrintDesignPage() {
 
               <div className="grid gap-4 sm:grid-cols-4 pt-2 border-t">
                 <div className="space-y-2">
-                  <Label htmlFor="marginTop">Top (mm)</Label>
+                  <Label htmlFor="marginTop">{t("settingsPage.print.marginTop")}</Label>
                   <Input
                     id="marginTop"
                     type="number"
@@ -293,7 +295,7 @@ export default function PrintDesignPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="marginBottom">Bottom (mm)</Label>
+                  <Label htmlFor="marginBottom">{t("settingsPage.print.marginBottom")}</Label>
                   <Input
                     id="marginBottom"
                     type="number"
@@ -302,7 +304,7 @@ export default function PrintDesignPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="marginLeft">Left (mm)</Label>
+                  <Label htmlFor="marginLeft">{t("settingsPage.print.marginLeft")}</Label>
                   <Input
                     id="marginLeft"
                     type="number"
@@ -311,7 +313,7 @@ export default function PrintDesignPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="marginRight">Right (mm)</Label>
+                  <Label htmlFor="marginRight">{t("settingsPage.print.marginRight")}</Label>
                   <Input
                     id="marginRight"
                     type="number"
@@ -322,12 +324,12 @@ export default function PrintDesignPage() {
               </div>
 
               <div className="space-y-2 pt-2 border-t">
-                <Label htmlFor="a4Footer">Footer Text</Label>
+                <Label htmlFor="a4Footer">{t("settingsPage.print.footerText")}</Label>
                 <Textarea
                   id="a4Footer"
                   value={form["print.a4.footerText"]}
                   onChange={(e) => updateField("print.a4.footerText", e.target.value)}
-                  placeholder="Thank you for your business"
+                  placeholder={t("settingsPage.print.footerPlaceholder")}
                   rows={2}
                 />
               </div>
@@ -338,30 +340,30 @@ export default function PrintDesignPage() {
             <CardHeader>
               <CardTitle className="text-base flex items-center gap-2">
                 <ReceiptText className="h-4 w-4" />
-                POS Printer (Thermal) Settings
+                {t("settingsPage.print.thermalTitle")}
               </CardTitle>
-              <CardDescription>Configure 80mm or 58mm thermal receipt printer options</CardDescription>
+              <CardDescription>{t("settingsPage.print.thermalDescription")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="thermalPaper">Paper Width</Label>
+                  <Label htmlFor="thermalPaper">{t("settingsPage.print.paperWidth")}</Label>
                   <Select
                     value={form["print.thermal.paperWidth"]}
                     onValueChange={(v) => updateField("print.thermal.paperWidth", v)}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Select paper width" />
+                      <SelectValue placeholder={t("settingsPage.print.selectPaperWidth")} />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="58">58mm (Compact)</SelectItem>
-                      <SelectItem value="80">80mm (Standard)</SelectItem>
+                      <SelectItem value="58">{t("settingsPage.print.paper58")}</SelectItem>
+                      <SelectItem value="80">{t("settingsPage.print.paper80")}</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="thermalAuto">Auto Print After Sale</Label>
+                    <Label htmlFor="thermalAuto">{t("settingsPage.print.autoPrint")}</Label>
                     <Switch
                       id="thermalAuto"
                       checked={form["print.thermal.autoPrint"] === "true"}
@@ -373,7 +375,7 @@ export default function PrintDesignPage() {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="thermalLogo">Show Logo on Receipt</Label>
+                    <Label htmlFor="thermalLogo">{t("settingsPage.print.showLogoReceipt")}</Label>
                     <Switch
                       id="thermalLogo"
                       checked={form["print.thermal.showLogo"] === "true"}
@@ -385,7 +387,7 @@ export default function PrintDesignPage() {
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="thermalQr">Include QR Code</Label>
+                    <Label htmlFor="thermalQr">{t("settingsPage.print.includeQr")}</Label>
                     <Switch
                       id="thermalQr"
                       checked={form["print.thermal.includeQr"] === "true"}
@@ -396,12 +398,12 @@ export default function PrintDesignPage() {
                   </div>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="thermalFooter">Thermal Footer Message</Label>
+                  <Label htmlFor="thermalFooter">{t("settingsPage.print.thermalFooter")}</Label>
                   <Input
                     id="thermalFooter"
                     value={form["print.thermal.footerMessage"]}
                     onChange={(e) => updateField("print.thermal.footerMessage", e.target.value)}
-                    placeholder="Thank you for your business"
+                    placeholder={t("settingsPage.print.footerPlaceholder")}
                   />
                 </div>
               </div>
@@ -410,9 +412,9 @@ export default function PrintDesignPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Printer Connection (USB Thermal)</CardTitle>
+              <CardTitle className="text-base">{t("settingsPage.print.usbTitle")}</CardTitle>
               <CardDescription>
-                Connect to POS thermal printer via WebUSB. Requires HTTPS or localhost.
+                {t("settingsPage.print.usbDescription")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -428,10 +430,10 @@ export default function PrintDesignPage() {
               <div>
                 <CardTitle className="text-base flex items-center gap-2">
                   <Eye className="h-4 w-4 text-primary" />
-                  Live Print Preview
+                  {t("settingsPage.print.livePreview")}
                 </CardTitle>
                 <CardDescription>
-                  Instant real-time preview of changes before printing
+                  {t("settingsPage.print.livePreviewDescription")}
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
@@ -441,7 +443,7 @@ export default function PrintDesignPage() {
                   onClick={() => setPreviewTab("a4")}
                 >
                   <FileText className="me-1 h-3.5 w-3.5" />
-                  A4 Invoice
+                  {t("settingsPage.print.previewA4")}
                 </Button>
                 <Button
                   size="sm"
@@ -449,7 +451,7 @@ export default function PrintDesignPage() {
                   onClick={() => setPreviewTab("thermal")}
                 >
                   <ReceiptText className="me-1 h-3.5 w-3.5" />
-                  Thermal POS
+                  {t("settingsPage.print.previewThermal")}
                 </Button>
               </div>
             </CardHeader>
@@ -482,27 +484,27 @@ export default function PrintDesignPage() {
                 >
                   <div className="text-center space-y-1 mb-3">
                     <p className="font-bold text-sm tracking-wide">AWIK NET</p>
-                    <p className="text-[10px] text-gray-600">INTERNET SERVICE PROVIDER</p>
-                    <p className="text-[10px] text-gray-600">Tel: +961 70 000 000</p>
-                    <p className="text-[10px] text-gray-600">Main Street, Tripoli</p>
+                    <p className="text-[10px] text-gray-600">{t("settingsPage.print.sampleTagline")}</p>
+                    <p className="text-[10px] text-gray-600">{t("settingsPage.print.receiptTel")}</p>
+                    <p className="text-[10px] text-gray-600">{t("settingsPage.print.receiptAddress")}</p>
                   </div>
 
                   <div className="border-t border-b border-dashed border-gray-400 py-1.5 my-2 space-y-0.5 text-[11px]">
                     <div className="flex justify-between">
-                      <span>Receipt:</span>
+                      <span>{t("settingsPage.print.receiptLabel")}</span>
                       <span className="font-semibold">{SAMPLE_SALE.saleNumber}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Date:</span>
+                      <span>{t("settingsPage.print.dateLabel")}</span>
                       <span>{new Date().toLocaleDateString("en-GB")}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Cashier:</span>
-                      <span>System Admin</span>
+                      <span>{t("settingsPage.print.cashierLabel")}</span>
+                      <span>{t("settingsPage.print.cashierName")}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span>Customer:</span>
-                      <span>Ahmad Hassan</span>
+                      <span>{t("settingsPage.print.customerLabel")}</span>
+                      <span>{t("settingsPage.print.customerName")}</span>
                     </div>
                   </div>
 
@@ -524,11 +526,11 @@ export default function PrintDesignPage() {
 
                   <div className="border-t border-dashed border-gray-400 pt-2 mt-2 space-y-1 text-[11px]">
                     <div className="flex justify-between font-bold text-sm">
-                      <span>TOTAL:</span>
+                      <span>{t("settingsPage.print.totalLabel")}</span>
                       <span>${Number(SAMPLE_SALE.totalAmount).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-gray-600">
-                      <span>Paid ({SAMPLE_SALE.paymentMethod}):</span>
+                      <span>{t("settingsPage.print.paidLabel", { method: SAMPLE_SALE.paymentMethod })}</span>
                       <span>${Number(SAMPLE_SALE.totalAmount).toFixed(2)}</span>
                     </div>
                   </div>
@@ -536,15 +538,15 @@ export default function PrintDesignPage() {
                   {form["print.thermal.includeQr"] === "true" && (
                     <div className="my-3 flex flex-col items-center">
                       <div className="w-16 h-16 border-2 border-black flex items-center justify-center font-bold text-[9px] bg-gray-50">
-                        [QR CODE]
+                        {t("settingsPage.print.qrCodePlaceholder")}
                       </div>
-                      <span className="text-[9px] text-gray-500 mt-1">Scan to verify</span>
+                      <span className="text-[9px] text-gray-500 mt-1">{t("settingsPage.print.scanToVerify")}</span>
                     </div>
                   )}
 
                   <div className="text-center text-[10px] text-gray-600 mt-3 pt-2 border-t border-dashed border-gray-400">
-                    <p>{form["print.thermal.footerMessage"] || "Thank you for your business"}</p>
-                    <p className="text-[9px] text-gray-500 mt-1">Powered by AWIK NET ISP</p>
+                    <p>{form["print.thermal.footerMessage"] || t("settingsPage.print.footerPlaceholder")}</p>
+                    <p className="text-[9px] text-gray-500 mt-1">{t("settingsPage.print.poweredBy")}</p>
                   </div>
                 </div>
               )}

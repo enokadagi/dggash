@@ -7,6 +7,8 @@ import type { DateRange } from "react-day-picker";
 import { useSales, useCancelSale, useRefundSale, type Sale } from "@/hooks/api/use-sales";
 import { usePagination } from "@/hooks/use-pagination";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useLocalization } from "@/hooks/use-localization";
+import { useAuthStore } from "@/stores/auth-store";
 import { PageHeader } from "@/components/ui/page-header";
 import { DataTable, type ColumnDef } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -32,12 +34,16 @@ import {
   Eye,
   RotateCcw,
   XCircle,
+  Wallet,
 } from "lucide-react";
 
 const PAYMENT_METHODS = ["cash", "card", "bank_transfer", "credit", "other"] as const;
 
 export default function SalesPage() {
   const router = useRouter();
+  const { t } = useLocalization();
+  const role = useAuthStore((state) => state.user?.role);
+  const isAdmin = role === "ADMIN";
   const { page, limit, setPage } = usePagination({ initialLimit: 20 });
   const [search, setSearch] = React.useState("");
   const [status, setStatus] = React.useState<string>("");
@@ -66,7 +72,9 @@ export default function SalesPage() {
   const refundMutation = useRefundSale();
 
   const pageRevenue = sales.reduce((sum, s) => sum + Number(s.totalAmount), 0);
+  const pageProfit = sales.reduce((sum, s) => sum + Number(s.profit ?? 0), 0);
   const completedCount = sales.filter((s) => s.status === "COMPLETED").length;
+  const margin = pageRevenue > 0 ? (pageProfit / pageRevenue) * 100 : 0;
 
   const handleActionConfirm = () => {
     if (!action) return;
@@ -88,7 +96,7 @@ export default function SalesPage() {
   const columns: ColumnDef<Sale>[] = [
     {
       accessorKey: "saleNumber",
-      header: "Sale #",
+      header: t("sales.saleNumber"),
       cell: ({ row }) => (
         <Link href={`/sales/detail?id=${encodeURIComponent(row.original.id)}`} className="font-mono text-sm font-medium text-primary hover:underline">
           {row.original.saleNumber}
@@ -97,52 +105,89 @@ export default function SalesPage() {
     },
     {
       accessorKey: "customer",
-      header: "Customer",
+      header: t("sales.customer"),
       cell: ({ row }) => {
         const c = row.original.customer;
         return c ? (
           <span>
-            {c.firstName} {c.lastName}
+            {[c.firstName, c.lastName].filter(Boolean).join(" ")}
             <span className="block text-xs text-muted-foreground">{c.phone}</span>
           </span>
         ) : (
-          <span className="text-muted-foreground">Walk-in</span>
+          <span className="text-muted-foreground">{t("sales.walkIn")}</span>
+        );
+      },
+    },
+    {
+      accessorKey: "products",
+      header: t("sales.products"),
+      cell: ({ row }) => {
+        const names = row.original.items
+          .map((i) => i.product?.name)
+          .filter((n): n is string => !!n);
+        if (names.length === 0) {
+          return (
+            <span className="tabular-nums">
+              {row.original.items.reduce((sum, i) => sum + i.quantity, 0)} {t("sales.qty")}
+            </span>
+          );
+        }
+        const shown = names.slice(0, 2).join(", ");
+        const extra = names.length - 2;
+        return (
+          <span className="block max-w-[220px] truncate" title={names.join(", ")}>
+            {shown}
+            {extra > 0 ? <span className="text-muted-foreground"> +{extra}</span> : null}
+          </span>
         );
       },
     },
     {
       accessorKey: "paymentMethod",
-      header: "Payment",
+      header: t("sales.payment"),
       cell: ({ row }) => (
         <span className="capitalize">{row.original.paymentMethod.replace(/_/g, " ")}</span>
       ),
     },
     {
-      accessorKey: "items",
-      header: "Qty",
-      cell: ({ row }) => (
-        <span className="tabular-nums">
-          {row.original.items.reduce((sum, i) => sum + i.quantity, 0)}
-        </span>
-      ),
-    },
-    {
       accessorKey: "totalAmount",
-      header: "Total",
+      header: t("sales.total"),
       cell: ({ row }) => (
         <span className="font-medium tabular-nums">
           {formatCurrency(Number(row.original.totalAmount), row.original.currency)}
         </span>
       ),
     },
+    ...(isAdmin
+      ? ([
+          {
+            accessorKey: "profit",
+            header: t("sales.profit"),
+            cell: ({ row }) => {
+              const profit = Number(row.original.profit ?? 0);
+              return (
+                <span
+                  className={
+                    profit >= 0
+                      ? "font-medium tabular-nums text-emerald-600"
+                      : "font-medium tabular-nums text-destructive"
+                  }
+                >
+                  {formatCurrency(profit, row.original.currency)}
+                </span>
+              );
+            },
+          },
+        ] as ColumnDef<Sale>[])
+      : []),
     {
       accessorKey: "status",
-      header: "Status",
+      header: t("sales.status"),
       cell: ({ row }) => <StatusBadge status={row.original.status} />,
     },
     {
       accessorKey: "createdAt",
-      header: "Date",
+      header: t("sales.date"),
       cell: ({ row }) => (
         <span className="whitespace-nowrap text-sm text-muted-foreground">
           {formatDateTime(row.original.createdAt)}
@@ -154,28 +199,40 @@ export default function SalesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Sales"
-        description="POS checkouts and sale history for the storefront"
+        title={t("sales.history")}
+        description={t("sales.title")}
         actions={
           <Button asChild>
             <Link href="/sales/pos">
               <Plus className="me-2 h-4 w-4" />
-              Open POS
+              {t("sales.openPos")}
             </Link>
           </Button>
         }
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard title="Total Sales" value={total} icon={ShoppingCart} />
-        <StatCard title="Page Revenue" value={formatCurrency(pageRevenue, currency)} icon={DollarSign} />
-        <StatCard title="Completed (page)" value={completedCount} icon={ReceiptText} />
-        <StatCard title="Avg. Order" value={formatCurrency(sales.length ? pageRevenue / sales.length : 0, currency)} icon={TrendingUp} />
+        <StatCard title={t("sales.totalSales")} value={total} icon={ShoppingCart} />
+        <StatCard title={t("sales.pageRevenue")} value={formatCurrency(pageRevenue, currency)} icon={DollarSign} />
+        <StatCard title={t("sales.completedPage")} value={completedCount} icon={ReceiptText} />
+        <StatCard title={t("sales.avgOrder")} value={formatCurrency(sales.length ? pageRevenue / sales.length : 0, currency)} icon={TrendingUp} />
       </div>
+
+      {isAdmin ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <StatCard title={t("sales.totalProfit")} value={formatCurrency(pageProfit, currency)} icon={Wallet} />
+          <StatCard title={t("sales.margin")} value={`${margin.toFixed(1)}%`} icon={TrendingUp} />
+          <StatCard
+            title={t("sales.grossProfit")}
+            value={formatCurrency(pageProfit, currency)}
+            icon={DollarSign}
+          />
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Filters</CardTitle>
+          <CardTitle className="text-base">{t("sales.filters")}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4 lg:flex-row lg:items-end">
           <div className="grid flex-1 gap-4 sm:grid-cols-3">
@@ -187,14 +244,14 @@ export default function SalesPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger aria-label="Status" className="h-9 w-full">
-                  <SelectValue placeholder="All statuses" />
+                <SelectTrigger aria-label={t("sales.status")} className="h-9 w-full">
+                  <SelectValue placeholder={t("sales.allStatuses")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ALL">All statuses</SelectItem>
-                  <SelectItem value="COMPLETED">Completed</SelectItem>
-                  <SelectItem value="REFUNDED">Refunded</SelectItem>
-                  <SelectItem value="CANCELLED">Cancelled</SelectItem>
+                  <SelectItem value="ALL">{t("sales.allStatuses")}</SelectItem>
+                  <SelectItem value="COMPLETED">{t("sales.completed")}</SelectItem>
+                  <SelectItem value="REFUNDED">{t("sales.refunded")}</SelectItem>
+                  <SelectItem value="CANCELLED">{t("sales.cancelled")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -206,11 +263,11 @@ export default function SalesPage() {
                   setPage(1);
                 }}
               >
-                <SelectTrigger aria-label="Payment method" className="h-9 w-full">
-                  <SelectValue placeholder="All payment methods" />
+                <SelectTrigger aria-label={t("sales.payment")} className="h-9 w-full">
+                  <SelectValue placeholder={t("sales.allMethods")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="ALL">All methods</SelectItem>
+                  <SelectItem value="ALL">{t("sales.allMethods")}</SelectItem>
                   {PAYMENT_METHODS.map((m) => (
                     <SelectItem key={m} value={m}>
                       <span className="capitalize">{m.replace(/_/g, " ")}</span>
@@ -226,13 +283,13 @@ export default function SalesPage() {
                   setDateRange(r);
                   setPage(1);
                 }}
-                placeholder="All dates"
+                placeholder={t("sales.date")}
               />
             </div>
           </div>
           {hasFilters && (
             <Button variant="ghost" onClick={resetFilters}>
-              Clear filters
+              {t("sales.resetFilters")}
             </Button>
           )}
         </CardContent>
@@ -241,7 +298,7 @@ export default function SalesPage() {
       <DataTable
         columns={columns}
         data={sales}
-        searchPlaceholder="Search sale #, customer, phone..."
+        searchPlaceholder={t("sales.searchPlaceholder")}
         onSearch={(v) => {
           setSearch(v);
           setPage(1);
@@ -258,19 +315,19 @@ export default function SalesPage() {
             destructive?: boolean;
           }> = [
             {
-              label: "View",
+              label: t("sales.view"),
               onClick: () => router.push(`/sales/detail?id=${encodeURIComponent(row.id)}`),
               icon: <Eye className="h-4 w-4" />,
             },
           ];
           if (row.status === "COMPLETED") {
             actions.push({
-              label: "Refund",
+              label: t("sales.refundAction"),
               onClick: () => setAction({ type: "refund", sale: row }),
               icon: <RotateCcw className="h-4 w-4" />,
             });
             actions.push({
-              label: "Cancel",
+              label: t("sales.cancelAction"),
               onClick: () => setAction({ type: "cancel", sale: row }),
               icon: <XCircle className="h-4 w-4" />,
               destructive: true,
@@ -283,13 +340,17 @@ export default function SalesPage() {
       <ConfirmDialog
         open={!!action}
         onOpenChange={(open) => !open && setAction(null)}
-        title={action?.type === "cancel" ? "Cancel this sale?" : "Refund this sale?"}
+        title={action?.type === "cancel" ? t("sales.cancelSale") : t("sales.refundSale")}
         description={
           action
-            ? `This will restore stock for sale ${action.sale.saleNumber} (${formatCurrency(Number(action.sale.totalAmount), action.sale.currency)}) and mark it as ${action.type === "cancel" ? "CANCELLED" : "REFUNDED"}.`
+            ? t("sales.restoreStock", {
+                sale: action.sale.saleNumber,
+                amount: formatCurrency(Number(action.sale.totalAmount), action.sale.currency),
+                status: action.type === "cancel" ? t("sales.cancelled") : t("sales.refunded"),
+              })
             : ""
         }
-        confirmLabel={action?.type === "cancel" ? "Cancel sale" : "Refund sale"}
+        confirmLabel={action?.type === "cancel" ? t("sales.confirmCancel") : t("sales.confirmRefund")}
         onConfirm={handleActionConfirm}
         destructive={action?.type === "cancel"}
       />

@@ -75,11 +75,16 @@ $nullableDescription = awikValidateSettingUpdateBody([
 awikSettingsTestAssert($nullableDescription['descriptionProvided'] === true, 'present null description must be preserved as an update');
 awikSettingsTestAssert($nullableDescription['description'] === null, 'null description mismatch');
 
-foreach ([[], ['value' => null], ['value' => '']] as $invalidBody) {
+awikSettingsTestAssert(
+    awikValidateSettingUpdateBody(['value' => ''])['value'] === '',
+    'empty string value must be accepted so blank fields can be saved'
+);
+
+foreach ([[], ['value' => null]] as $invalidBody) {
     awikSettingsTestExpectStatus(
         static fn () => awikValidateSettingUpdateBody($invalidBody),
         400,
-        'empty setting value'
+        'missing setting value'
     );
 }
 $unknownField = awikSettingsTestExpectStatus(

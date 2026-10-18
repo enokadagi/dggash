@@ -2,10 +2,12 @@
 
 import * as React from "react";
 import { ColumnDef } from "@tanstack/react-table";
-import { Package, Layers, DollarSign, AlertTriangle, PackageX, PackagePlus, Plus, Pencil, Printer } from "lucide-react";
+import { Package, Layers, DollarSign, AlertTriangle, PackageX, PackagePlus, Plus, Pencil, Printer, FileUp } from "lucide-react";
 import { toast } from "sonner";
 import { useProducts, useInventorySummary, useRestockProduct, type Product } from "@/hooks/api/use-products";
+import { useLocalization } from "@/hooks/use-localization";
 import { ProductFormDialog } from "@/components/inventory/product-form-dialog";
+import { ImportProductsDialog } from "@/components/inventory/import-products-dialog";
 import { PrintLabelButton, DownloadQrButton, ProductLabel } from "@/components/barcode/product-label";
 import { usePagination } from "@/hooks/use-pagination";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -36,13 +38,14 @@ import {
 import { formatCurrency } from "@/lib/utils";
 
 function StockBadge({ product }: { product: Product }) {
+  const { t } = useLocalization();
   if (product.currentStock <= 0) {
-    return <Badge variant="destructive">Out of Stock</Badge>;
+    return <Badge variant="destructive">{t("inventoryPage.outOfStock")}</Badge>;
   }
   if (product.currentStock <= product.minStock) {
-    return <Badge variant="warning">Low Stock</Badge>;
+    return <Badge variant="warning">{t("inventoryPage.lowStock")}</Badge>;
   }
-  return <Badge variant="success">In Stock</Badge>;
+  return <Badge variant="success">{t("inventoryPage.inStock")}</Badge>;
 }
 
 function RestockDialog({
@@ -56,6 +59,7 @@ function RestockDialog({
   const [reference, setReference] = React.useState("");
   const [notes, setNotes] = React.useState("");
   const restockMutation = useRestockProduct();
+  const { t } = useLocalization();
 
   React.useEffect(() => {
     if (product) {
@@ -69,15 +73,15 @@ function RestockDialog({
     <Dialog open={!!product} onOpenChange={(open) => { if (!open) onOpenChange(false); }}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Restock {product?.name}</DialogTitle>
+          <DialogTitle>{t("inventoryPage.restockTitle", { product: product?.name })}</DialogTitle>
           <DialogDescription>
-            Current stock: {product?.currentStock} {product?.unit}. Add stock to this product.
+            {t("inventoryPage.currentStock", { quantity: product?.currentStock, unit: product?.unit })}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label htmlFor="restock-qty" className="text-xs font-medium text-muted-foreground">
-              Quantity
+              {t("inventoryPage.quantity")}
             </Label>
             <Input
               id="restock-qty"
@@ -89,22 +93,22 @@ function RestockDialog({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="restock-ref" className="text-xs font-medium text-muted-foreground">
-              Reference (optional)
+              {t("inventoryPage.referenceOptional")}
             </Label>
             <Input
               id="restock-ref"
-              placeholder="e.g. Supplier PO-1024"
+              placeholder={t("inventoryPage.referencePlaceholder")}
               value={reference}
               onChange={(e) => setReference(e.target.value)}
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="restock-notes" className="text-xs font-medium text-muted-foreground">
-              Notes (optional)
+              {t("inventoryPage.notesOptional")}
             </Label>
             <Textarea
               id="restock-notes"
-              placeholder="e.g. New delivery from supplier"
+              placeholder={t("inventoryPage.notesPlaceholder")}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
             />
@@ -112,7 +116,7 @@ function RestockDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
+            {t("common.cancel")}
           </Button>
           <Button
             disabled={restockMutation.isPending || quantity < 1}
@@ -128,7 +132,7 @@ function RestockDialog({
               );
             }}
           >
-            {restockMutation.isPending ? "Adding..." : "Add Stock"}
+            {restockMutation.isPending ? t("inventoryPage.adding") : t("inventoryPage.addStock")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -143,6 +147,8 @@ function LabelDialog({
   product: Product | null;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t } = useLocalization();
+
   if (!product) {
     return null;
   }
@@ -160,9 +166,9 @@ function LabelDialog({
     <Dialog open onOpenChange={(open) => { if (!open) onOpenChange(false); }}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
-          <DialogTitle>Print label</DialogTitle>
+          <DialogTitle>{t("inventoryPage.printLabel")}</DialogTitle>
           <DialogDescription>
-            Shelf label for {product.name}. Choose “Save as PDF” in the print dialog to download.
+            {t("inventoryPage.labelDescription", { name: product.name })}
           </DialogDescription>
         </DialogHeader>
 
@@ -179,14 +185,13 @@ function LabelDialog({
             <DownloadQrButton data={data} onError={(message) => toast.error(message)} />
           </div>
           <p className="text-center text-[11px] text-muted-foreground">
-            Scanning the QR or barcode at the point of sale adds this product to the cart
-            instantly.
+            {t("inventoryPage.qrHint")}
           </p>
         </div>
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Close
+            {t("common.close")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -205,11 +210,13 @@ function AddProductDialog({
 }
 
 export default function InventoryPage() {
+  const { t } = useLocalization();
   const { page, limit, setPage } = usePagination();
   const [search, setSearch] = React.useState("");
   const [lowStock, setLowStock] = React.useState("false");
   const [restockProduct, setRestockProduct] = React.useState<Product | null>(null);
   const [addProductOpen, setAddProductOpen] = React.useState(false);
+  const [importOpen, setImportOpen] = React.useState(false);
   const [editProduct, setEditProduct] = React.useState<Product | null>(null);
   const [labelProduct, setLabelProduct] = React.useState<Product | null>(null);
   const debouncedSearch = useDebounce(search);
@@ -228,7 +235,7 @@ export default function InventoryPage() {
   const columns: ColumnDef<Product>[] = [
     {
       accessorKey: "name",
-      header: "Product",
+      header: t("inventoryPage.product"),
       cell: ({ row }) => (
         <div className="min-w-0">
           <p className="font-medium">{row.original.name}</p>
@@ -241,22 +248,22 @@ export default function InventoryPage() {
     },
     {
       accessorKey: "category",
-      header: "Category",
+      header: t("inventoryPage.category"),
       cell: ({ row }) => row.original.category?.name || "—",
     },
     {
       accessorKey: "unit",
-      header: "Unit",
+      header: t("inventoryPage.unit"),
       cell: ({ row }) => row.original.unit,
     },
     {
       accessorKey: "sellingPrice",
-      header: "Selling Price",
+      header: t("inventoryPage.sellingPrice"),
       cell: ({ row }) => formatCurrency(Number(row.original.sellingPrice), row.original.currency),
     },
     {
       accessorKey: "currentStock",
-      header: "Stock",
+      header: t("inventoryPage.stock"),
       cell: ({ row }) => (
         <div className="flex items-center gap-2">
           <span className="font-semibold tabular-nums">{row.original.currentStock}</span>
@@ -266,10 +273,10 @@ export default function InventoryPage() {
     },
     {
       accessorKey: "isActive",
-      header: "Status",
+      header: t("common.status"),
       cell: ({ row }) => (
         <Badge variant={row.original.isActive ? "success" : "secondary"}>
-          {row.original.isActive ? "Active" : "Inactive"}
+          {row.original.isActive ? t("common.active") : t("common.inactive")}
         </Badge>
       ),
     },
@@ -278,32 +285,43 @@ export default function InventoryPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Inventory"
-        description="Track products, stock levels, and value"
-        actions={<Button onClick={() => setAddProductOpen(true)}><Plus className="me-2 h-4 w-4" />Add Product</Button>}
+        title={t("inventoryPage.title")}
+        description={t("inventoryPage.description")}
+        actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <FileUp className="me-2 h-4 w-4" />
+              {t("inventoryPage.import.button")}
+            </Button>
+            <Button onClick={() => setAddProductOpen(true)}>
+              <Plus className="me-2 h-4 w-4" />
+              {t("inventoryPage.addProduct")}
+            </Button>
+          </div>
+        }
       />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Total Products"
+          title={t("inventoryPage.totalProducts")}
           value={summaryLoading ? "—" : (summary?.totalProducts ?? 0)}
           icon={Package}
         />
         <StatCard
-          title="Stock Value"
+          title={t("inventoryPage.stockValue")}
           value={summaryLoading ? "—" : formatCurrency(summary?.totalValue ?? 0)}
           icon={DollarSign}
         />
         <StatCard
-          title="Units in Stock"
+          title={t("inventoryPage.unitsInStock")}
           value={summaryLoading ? "—" : (summary?.totalStock ?? 0)}
           icon={Layers}
         />
         <StatCard
-          title="Low Stock"
+          title={t("inventoryPage.lowStock")}
           value={summaryLoading ? "—" : (summary?.lowStock ?? 0)}
           icon={AlertTriangle}
-          description={`${summary?.outOfStock ?? 0} out of stock`}
+          description={t("inventoryPage.outOfStockCount", { count: summary?.outOfStock ?? 0 })}
         />
       </div>
 
@@ -311,22 +329,22 @@ export default function InventoryPage() {
         <CardContent className="p-0">
           <div className="flex flex-col gap-2 border-b p-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-sm font-medium">Products</p>
+              <p className="text-sm font-medium">{t("inventoryPage.products")}</p>
               <p className="text-xs text-muted-foreground">
-                {data?.total ?? 0} products{isLoading ? "..." : ""}
+                {t("inventoryPage.productCount", { count: data?.total ?? 0 })}{isLoading ? "..." : ""}
               </p>
             </div>
             <div className="w-full sm:w-56">
               <Label htmlFor="stock-filter" className="mb-1 block text-xs font-medium text-muted-foreground">
-                Stock level
+                {t("inventoryPage.stockLevel")}
               </Label>
               <Select value={lowStock} onValueChange={(v) => { setLowStock(v); setPage(1); }}>
                 <SelectTrigger id="stock-filter" className="h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="false">All stock</SelectItem>
-                  <SelectItem value="true">Low stock only</SelectItem>
+                  <SelectItem value="false">{t("inventoryPage.allStock")}</SelectItem>
+                  <SelectItem value="true">{t("inventoryPage.lowStockOnly")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -334,16 +352,16 @@ export default function InventoryPage() {
           <DataTable
             columns={columns}
             data={products}
-            searchPlaceholder="Search products..."
+            searchPlaceholder={t("inventoryPage.searchProducts")}
             onSearch={setSearch}
             page={page}
             totalPages={data ? Math.ceil(data.total / (data.limit || 1)) : 1}
             totalItems={data?.total}
             onPageChange={setPage}
             actions={(row) => [
-              { label: "Restock", onClick: () => setRestockProduct(row), icon: <PackagePlus className="h-4 w-4" /> },
-              { label: "Label", onClick: () => setLabelProduct(row), icon: <Printer className="h-4 w-4" /> },
-              { label: "Edit", onClick: () => setEditProduct(row), icon: <Pencil className="h-4 w-4" /> },
+              { label: t("inventoryPage.restock"), onClick: () => setRestockProduct(row), icon: <PackagePlus className="h-4 w-4" /> },
+              { label: t("inventoryPage.label"), onClick: () => setLabelProduct(row), icon: <Printer className="h-4 w-4" /> },
+              { label: t("common.edit"), onClick: () => setEditProduct(row), icon: <Pencil className="h-4 w-4" /> },
             ]}
           />
         </CardContent>
@@ -354,6 +372,7 @@ export default function InventoryPage() {
         onOpenChange={(open) => { if (!open) setRestockProduct(null); }}
       />
       <AddProductDialog open={addProductOpen} onOpenChange={setAddProductOpen} />
+      <ImportProductsDialog open={importOpen} onOpenChange={setImportOpen} />
       <ProductFormDialog
         open={Boolean(editProduct)}
         product={editProduct}
@@ -368,8 +387,7 @@ export default function InventoryPage() {
         <div className="flex items-start gap-2 rounded-md border p-4 text-sm text-muted-foreground">
           <PackageX className="mt-0.5 h-4 w-4" />
           <span>
-            No products need restocking right now. Keep an eye on the Low Stock card —
-            it updates automatically as sales happen.
+            {t("inventoryPage.noRestockNeeded")}
           </span>
         </div>
       )}

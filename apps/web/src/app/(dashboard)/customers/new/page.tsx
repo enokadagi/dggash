@@ -123,14 +123,14 @@ export default function NewCustomerPage() {
   const handleCopyPhoneToWhatsapp = () => {
     if (phoneValue) {
       setValue("whatsappNumber", phoneValue, { shouldValidate: true, shouldDirty: true });
-      toast.info("Phone copied to WhatsApp number");
+      toast.info(t("customersPages.new.phoneCopied"));
     }
   };
 
   const handleUseCurrentLocation = () => {
     setLocationError(null);
     if (typeof window === "undefined" || !navigator.geolocation) {
-      setLocationError("Geolocation is not supported by your browser. Please enter coordinates manually.");
+      setLocationError(t("customersPages.new.geoUnsupported"));
       return;
     }
 
@@ -147,15 +147,15 @@ export default function NewCustomerPage() {
           shouldDirty: true,
           shouldValidate: true,
         });
-        toast.success("Location coordinates captured");
+        toast.success(t("customersPages.new.locationCaptured"));
       },
       (error) => {
         setIsLocating(false);
-        let msg = "Unable to access current location.";
+        let msg = t("customersPages.new.geoUnavailable");
         if (error.code === error.PERMISSION_DENIED) {
-          msg = "GPS location is not available in this browser (requires HTTPS). Please use the 'Pick on Map' button instead.";
+          msg = t("customersPages.new.geoDenied");
         } else if (error.code === error.TIMEOUT) {
-          msg = "Location request timed out. Please use the 'Pick on Map' button or enter coordinates manually.";
+          msg = t("customersPages.new.geoTimeout");
         }
         setLocationError(msg);
       },
@@ -209,12 +209,15 @@ export default function NewCustomerPage() {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       queryClient.invalidateQueries({ queryKey: ["subscriptions"] });
       toast.success(
-        `Customer ${customer.firstName} ${customer.lastName} created and plan activated successfully!`,
+        t("customersPages.new.createSuccess", {
+          firstName: customer.firstName,
+          lastName: customer.lastName,
+        }),
       );
       router.push(`/customers/view?id=${encodeURIComponent(customer.id)}`);
     },
     onError: (err: { message?: string }) => {
-      toast.error(err.message || "Failed to create customer and assign plan");
+      toast.error(err.message || t("customersPages.new.createError"));
     },
   });
 
@@ -225,12 +228,12 @@ export default function NewCustomerPage() {
   return (
     <div className="space-y-6 pb-12">
       <PageHeader
-        title="Add New Customer"
-        description="Register a new subscriber and assign their internet service plan"
+        title={t("customersPages.new.title")}
+        description={t("customersPages.new.description")}
         actions={
           <Button variant="ghost" onClick={() => router.back()}>
             <ArrowLeft className="me-2 h-4 w-4" />
-            {t("common.back") || "Back"}
+            {t("common.back")}
           </Button>
         }
       />
@@ -245,15 +248,15 @@ export default function NewCustomerPage() {
                   <Wifi className="h-5 w-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-base">1. Choose Internet Plan *</CardTitle>
+                  <CardTitle className="text-base">{t("customersPages.new.stepPlan")}</CardTitle>
                   <CardDescription>
-                    Select the service package and speed requested by the customer
+                    {t("customersPages.new.stepPlanDescription")}
                   </CardDescription>
                 </div>
               </div>
               {selectedPlan && (
                 <Badge variant="success" className="px-3 py-1 text-xs">
-                  Selected: {selectedPlan.name}
+                  {t("customersPages.new.selectedPlan", { name: selectedPlan.name })}
                 </Badge>
               )}
             </div>
@@ -262,14 +265,14 @@ export default function NewCustomerPage() {
             {isLoadingPlans ? (
               <div className="flex items-center justify-center py-8 text-sm text-muted-foreground">
                 <Loader2 className="me-2 h-4 w-4 animate-spin" />
-                Loading service plans...
+                {t("customersPages.new.loadingPlans")}
               </div>
             ) : activePlans.length === 0 ? (
               <div className="rounded-lg border border-dashed p-6 text-center">
                 <AlertCircle className="mx-auto h-8 w-8 text-amber-500 mb-2" />
-                <p className="text-sm font-medium">No active internet plans found</p>
+                <p className="text-sm font-medium">{t("customersPages.new.noPlans")}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Please configure service plans under the Plans section before adding customers.
+                  {t("customersPages.new.noPlansHint")}
                 </p>
                 <Button
                   type="button"
@@ -278,7 +281,7 @@ export default function NewCustomerPage() {
                   className="mt-3"
                   onClick={() => router.push("/plans")}
                 >
-                  Go to Plans
+                  {t("customersPages.new.goToPlans")}
                 </Button>
               </div>
             ) : (
@@ -301,7 +304,7 @@ export default function NewCustomerPage() {
                           <div className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
                             <span className="font-medium text-primary">{plan.speed}</span>
                             <span>•</span>
-                            <span>{plan.durationDays} Days</span>
+                            <span>{t("customersPages.new.days", { count: plan.durationDays })}</span>
                           </div>
                         </div>
                         {isSelected ? (
@@ -314,7 +317,7 @@ export default function NewCustomerPage() {
                         <span className="text-lg font-bold text-foreground">
                           {formatCurrency(Number(plan.price), plan.currency)}
                         </span>
-                        <span className="text-xs text-muted-foreground">/{plan.durationDays}d</span>
+                        <span className="text-xs text-muted-foreground">{t("customersPages.perDuration", { days: plan.durationDays })}</span>
                       </div>
                       {plan.description && (
                         <p className="mt-1 text-xs text-muted-foreground truncate">{plan.description}</p>
@@ -339,14 +342,14 @@ export default function NewCustomerPage() {
                   <div className="space-y-1.5">
                     <Label htmlFor="startDate" className="text-xs flex items-center gap-1.5">
                       <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-                      Subscription Start Date *
+                      {t("customersPages.new.startDate")}
                     </Label>
                     <Input id="startDate" type="date" {...register("startDate")} className="bg-background" />
                   </div>
 
                   <div className="space-y-1.5">
                     <Label htmlFor="durationDays" className="text-xs">
-                      Duration (Days)
+                      {t("customersPages.new.duration")}
                     </Label>
                     <Input
                       id="durationDays"
@@ -360,27 +363,27 @@ export default function NewCustomerPage() {
                   <div className="space-y-1.5">
                     <Label htmlFor="paymentStatus" className="text-xs flex items-center gap-1.5">
                       <CreditCard className="h-3.5 w-3.5 text-muted-foreground" />
-                      Initial Payment Status
+                      {t("customersPages.new.paymentStatus")}
                     </Label>
                     <select
                       id="paymentStatus"
                       {...register("paymentStatus")}
                       className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     >
-                      <option value="paid">Paid (Activated immediately)</option>
-                      <option value="pending">Pending (Unpaid)</option>
-                      <option value="partially_paid">Partially Paid</option>
+                      <option value="paid">{t("customersPages.paymentStatus.paidImmediate")}</option>
+                      <option value="pending">{t("customersPages.paymentStatus.pendingUnpaid")}</option>
+                      <option value="partially_paid">{t("customersPages.paymentStatus.partiallyPaid")}</option>
                     </select>
                   </div>
                 </div>
 
                 <div className="mt-3 space-y-1.5">
                   <Label htmlFor="subscriptionNotes" className="text-xs">
-                    Subscription / Connection Notes (PPPoE, Port, Device Info)
+                    {t("customersPages.new.subNotes")}
                   </Label>
                   <Input
                     id="subscriptionNotes"
-                    placeholder="e.g. PPPoE user: user_01 / Fiber box Port 3"
+                    placeholder={t("customersPages.new.subNotesPlaceholder")}
                     {...register("subscriptionNotes")}
                     className="bg-background"
                   />
@@ -399,8 +402,8 @@ export default function NewCustomerPage() {
                   <User className="h-5 w-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-base">2. Customer Profile *</CardTitle>
-                  <CardDescription>Personal identification and contact details</CardDescription>
+                  <CardTitle className="text-base">{t("customersPages.new.stepProfile")}</CardTitle>
+                  <CardDescription>{t("customersPages.new.stepProfileDescription")}</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -408,14 +411,14 @@ export default function NewCustomerPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">{t("auth.firstName")} *</Label>
-                  <Input id="firstName" placeholder="First name" {...register("firstName")} />
+                  <Input id="firstName" placeholder={t("customersPages.new.firstNamePlaceholder")} {...register("firstName")} />
                   {errors.firstName && (
                     <p className="text-xs text-destructive">{errors.firstName.message}</p>
                   )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="lastName">{t("auth.lastName")} *</Label>
-                  <Input id="lastName" placeholder="Last name" {...register("lastName")} />
+                  <Input id="lastName" placeholder={t("customersPages.new.lastNamePlaceholder")} {...register("lastName")} />
                   {errors.lastName && (
                     <p className="text-xs text-destructive">{errors.lastName.message}</p>
                   )}
@@ -425,7 +428,7 @@ export default function NewCustomerPage() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="phone">{t("customers.phone")} *</Label>
-                  <span className="text-xs text-muted-foreground">E.164 format (e.g. +96170123456)</span>
+                  <span className="text-xs text-muted-foreground">{t("customersPages.new.e164Hint")}</span>
                 </div>
                 <Input
                   id="phone"
@@ -456,7 +459,7 @@ export default function NewCustomerPage() {
                       onClick={handleCopyPhoneToWhatsapp}
                     >
                       <Copy className="me-1 h-3 w-3" />
-                      Copy from phone
+                      {t("customersPages.new.copyFromPhone")}
                     </Button>
                   )}
                 </div>
@@ -487,8 +490,8 @@ export default function NewCustomerPage() {
                   <MapPin className="h-5 w-5" />
                 </div>
                 <div>
-                  <CardTitle className="text-base">3. Address & Location</CardTitle>
-                  <CardDescription>Service installation address and map coordinates</CardDescription>
+                  <CardTitle className="text-base">{t("customersPages.new.stepAddress")}</CardTitle>
+                  <CardDescription>{t("customersPages.new.stepAddressDescription")}</CardDescription>
                 </div>
               </div>
             </CardHeader>
@@ -498,7 +501,7 @@ export default function NewCustomerPage() {
                 <Textarea
                   id="address"
                   rows={2}
-                  placeholder="Building name, Floor, Street..."
+                  placeholder={t("customersPages.new.addressPlaceholder")}
                   {...register("address")}
                 />
               </div>
@@ -506,20 +509,20 @@ export default function NewCustomerPage() {
               <div className="grid grid-cols-3 gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="city">{t("customers.city")}</Label>
-                  <Input id="city" placeholder="Tripoli" {...register("city")} />
+                  <Input id="city" placeholder={t("customersPages.new.cityPlaceholder")} {...register("city")} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="region">{t("customers.region")}</Label>
-                  <Input id="region" placeholder="Al Mina" {...register("region")} />
+                  <Input id="region" placeholder={t("customersPages.new.regionPlaceholder")} {...register("region")} />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="zone">{t("customers.zone")}</Label>
-                  <Input id="zone" placeholder="Zone B" {...register("zone")} />
+                  <Input id="zone" placeholder={t("customersPages.new.zonePlaceholder")} {...register("zone")} />
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="location">Map Coordinates / GPS</Label>
+                <Label htmlFor="location">{t("customersPages.new.locationLabel")}</Label>
                 <div className="flex gap-2">
                   <Input
                     id="location"
@@ -534,7 +537,7 @@ export default function NewCustomerPage() {
                         setValue("longitude", parts[1], { shouldDirty: true });
                       }
                     }}
-                    placeholder="e.g. 34.43670, 35.84970 or address"
+                    placeholder={t("customersPages.new.locationPlaceholder")}
                     className="flex-1 font-mono text-xs"
                   />
                   <Button
@@ -544,7 +547,7 @@ export default function NewCustomerPage() {
                     className="shrink-0 text-primary border-primary/30 hover:bg-primary/5"
                   >
                     <MapPin className="me-1.5 h-4 w-4" />
-                    Pick on Map
+                    {t("customersPages.new.pickOnMap")}
                   </Button>
                   <Button
                     type="button"
@@ -558,7 +561,7 @@ export default function NewCustomerPage() {
                     ) : (
                       <Navigation className="me-1.5 h-4 w-4 text-muted-foreground" />
                     )}
-                    {isLocating ? "Locating..." : "Use GPS"}
+                    {isLocating ? t("customersPages.new.locating") : t("customersPages.new.useGps")}
                   </Button>
                 </div>
                 {locationError && (
@@ -567,7 +570,7 @@ export default function NewCustomerPage() {
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">
-                  Click &quot;Pick on Map&quot; to choose location, click &quot;Use GPS&quot;, or paste coordinates.
+                  {t("customersPages.new.locationHint")}
                 </p>
 
                 <MapPickerDialog
@@ -587,7 +590,7 @@ export default function NewCustomerPage() {
                 <Textarea
                   id="notes"
                   rows={2}
-                  placeholder="Installation notes, router serial, subscriber preferences..."
+                  placeholder={t("customersPages.new.notesPlaceholder")}
                   {...register("notes")}
                 />
               </div>
@@ -598,7 +601,7 @@ export default function NewCustomerPage() {
         {/* Actions Bar */}
         <div className="flex items-center justify-between border-t border-border pt-6">
           <Button type="button" variant="outline" onClick={() => router.back()}>
-            {t("common.cancel") || "Cancel"}
+            {t("common.cancel")}
           </Button>
 
           <Button
@@ -610,7 +613,7 @@ export default function NewCustomerPage() {
             {createCustomerMutation.isPending && (
               <Loader2 className="me-2 h-4 w-4 animate-spin" />
             )}
-            Save Customer & Plan
+            {t("customersPages.new.saveCustomerPlan")}
           </Button>
         </div>
       </form>

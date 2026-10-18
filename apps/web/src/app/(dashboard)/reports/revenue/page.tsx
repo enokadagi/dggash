@@ -8,6 +8,7 @@ import { LoadingState, ErrorState, EmptyState } from "@/components/ui/status-sta
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
 import { api } from "@/lib/api";
+import { useLocalization } from "@/hooks/use-localization";
 import { formatCurrency } from "@/lib/utils";
 import { TrendingUp, DollarSign, Receipt, TrendingDown, Percent } from "lucide-react";
 
@@ -36,44 +37,53 @@ interface RevenueReport {
   }>;
 }
 
-const monthlyColumns: ColumnDef<MonthlyData>[] = [
-  {
-    accessorKey: "month",
-    header: "Month",
-    cell: ({ row }) => <span className="font-medium">{row.original.month}</span>,
-  },
-  {
-    accessorKey: "invoiced",
-    header: "Invoiced",
-    cell: ({ row }) => formatCurrency(row.original.invoiced),
-  },
-  {
-    accessorKey: "collected",
-    header: "Collected",
-    cell: ({ row }) => formatCurrency(row.original.collected),
-  },
-  {
-    accessorKey: "outstanding",
-    header: "Outstanding",
-    cell: ({ row }) => <span className="text-destructive">{formatCurrency(row.original.outstanding)}</span>,
-  },
-  {
-    accessorKey: "collectionRate",
-    header: "Collection Rate",
-    cell: ({ row }) => (
-      <div className="flex items-center gap-2">
-        {row.original.collectionRate >= 90 ? (
-          <TrendingUp className="h-4 w-4 text-green-500" />
-        ) : (
-          <TrendingDown className="h-4 w-4 text-destructive" />
-        )}
-        {row.original.collectionRate}%
-      </div>
-    ),
-  },
-];
+function useMonthlyColumns(): ColumnDef<MonthlyData>[] {
+  const { t } = useLocalization();
+
+  return React.useMemo(
+    () => [
+      {
+        accessorKey: "month",
+        header: t("reportsPages.revenue.month"),
+        cell: ({ row }) => <span className="font-medium">{row.original.month}</span>,
+      },
+      {
+        accessorKey: "invoiced",
+        header: t("reportsPages.revenue.invoiced"),
+        cell: ({ row }) => formatCurrency(row.original.invoiced),
+      },
+      {
+        accessorKey: "collected",
+        header: t("reportsPages.revenue.collected"),
+        cell: ({ row }) => formatCurrency(row.original.collected),
+      },
+      {
+        accessorKey: "outstanding",
+        header: t("reportsPages.revenue.outstanding"),
+        cell: ({ row }) => <span className="text-destructive">{formatCurrency(row.original.outstanding)}</span>,
+      },
+      {
+        accessorKey: "collectionRate",
+        header: t("reportsPages.revenue.collectionRateCol"),
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            {row.original.collectionRate >= 90 ? (
+              <TrendingUp className="h-4 w-4 text-green-500" />
+            ) : (
+              <TrendingDown className="h-4 w-4 text-destructive" />
+            )}
+            {row.original.collectionRate}%
+          </div>
+        ),
+      },
+    ],
+    [t]
+  );
+}
 
 export default function RevenueReportPage() {
+  const { t } = useLocalization();
+  const monthlyColumns = useMonthlyColumns();
   const { data: report, isLoading, error, refetch } = useQuery({
     queryKey: ["revenue-report"],
     queryFn: () => api.get<RevenueReport>("/reports/revenue"),
@@ -103,9 +113,9 @@ export default function RevenueReportPage() {
       .sort((a, b) => a.month.localeCompare(b.month));
   }, [report]);
 
-  if (isLoading) return <LoadingState message="Loading revenue report..." />;
-  if (error) return <ErrorState message={(error as { message?: string })?.message || "Failed to load revenue report"} onRetry={() => refetch()} />;
-  if (!report) return <EmptyState message="No revenue data available" />;
+  if (isLoading) return <LoadingState message={t("reportsPages.revenue.loading")} />;
+  if (error) return <ErrorState message={(error as { message?: string })?.message || t("reportsPages.revenue.loadError")} onRetry={() => refetch()} />;
+  if (!report) return <EmptyState message={t("reportsPages.revenue.noData")} />;
 
   const collectionRate = report.summary.totalRevenue > 0
     ? Math.round((report.summary.totalRevenue / (report.summary.totalRevenue * 1.1)) * 100)
@@ -113,55 +123,55 @@ export default function RevenueReportPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Revenue Report" description="Revenue trends and financial reports" />
+      <PageHeader title={t("reportsPages.revenue.title")} description={t("reportsPages.revenue.description")} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("reportsPages.revenue.totalRevenue")}</CardTitle>
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(report.summary.totalRevenue)}</div>
-            <p className="text-xs text-muted-foreground">All time</p>
+            <p className="text-xs text-muted-foreground">{t("reportsPages.revenue.allTime")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Payments</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("reportsPages.revenue.totalPayments")}</CardTitle>
             <Receipt className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{report.summary.totalPayments}</div>
-            <p className="text-xs text-muted-foreground">Completed transactions</p>
+            <p className="text-xs text-muted-foreground">{t("reportsPages.revenue.completedTransactions")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Collection Rate</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("reportsPages.revenue.collectionRate")}</CardTitle>
             <Percent className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{collectionRate}%</div>
-            <p className="text-xs text-muted-foreground">Estimated collection efficiency</p>
+            <p className="text-xs text-muted-foreground">{t("reportsPages.revenue.collectionEfficiency")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Monthly Average</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("reportsPages.revenue.monthlyAverage")}</CardTitle>
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
               {formatCurrency(monthlyData.length > 0 ? report.summary.totalRevenue / monthlyData.length : 0)}
             </div>
-            <p className="text-xs text-muted-foreground">Per month average</p>
+            <p className="text-xs text-muted-foreground">{t("reportsPages.revenue.perMonthAverage")}</p>
           </CardContent>
         </Card>
       </div>
       {report.byMethod.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Revenue by Payment Method</CardTitle>
+            <CardTitle className="text-base">{t("reportsPages.revenue.byMethod")}</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -169,7 +179,7 @@ export default function RevenueReportPage() {
                 <div key={m.method} className="flex items-center justify-between rounded-lg border p-3">
                   <div>
                     <p className="text-sm font-medium">{m.method.replace(/_/g, " ")}</p>
-                    <p className="text-xs text-muted-foreground">{m.count} payments</p>
+                    <p className="text-xs text-muted-foreground">{t("reportsPages.revenue.paymentsCount", { count: m.count })}</p>
                   </div>
                   <span className="font-semibold">{formatCurrency(m.total)}</span>
                 </div>
@@ -180,11 +190,11 @@ export default function RevenueReportPage() {
       )}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Monthly Revenue Breakdown</CardTitle>
+          <CardTitle className="text-base">{t("reportsPages.revenue.monthlyBreakdown")}</CardTitle>
         </CardHeader>
         <CardContent>
           {monthlyData.length === 0 ? (
-            <EmptyState message="No monthly data available" />
+            <EmptyState message={t("reportsPages.revenue.noMonthly")} />
           ) : (
             <DataTable columns={monthlyColumns} data={monthlyData} />
           )}

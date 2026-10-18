@@ -713,8 +713,11 @@ function awikValidateSettingUpdateBody(array $body): array
         }
     }
 
-    if (!array_key_exists('value', $body) || $body['value'] === null || $body['value'] === '') {
-        $errors[] = 'value should not be empty';
+    // An empty string is a legitimate setting value (clearing an optional
+    // company field, e.g. logo/tagline). Only a missing or null value is
+    // invalid, so administrators can always save a form that has blank fields.
+    if (!array_key_exists('value', $body) || $body['value'] === null) {
+        $errors[] = 'value is required';
     }
     foreach (['category', 'description'] as $field) {
         if (array_key_exists($field, $body)
@@ -792,7 +795,7 @@ function awikValidateCustomerInput(array $body, bool $create): array
     }
 
     foreach (['phone', 'whatsappNumber'] as $field) {
-        if (!array_key_exists($field, $body) || $body[$field] === null) {
+        if (!array_key_exists($field, $body) || $body[$field] === null || $body[$field] === '') {
             continue;
         }
         if (!is_string($body[$field])) {
@@ -805,7 +808,7 @@ function awikValidateCustomerInput(array $body, bool $create): array
         }
     }
 
-    if (array_key_exists('email', $body) && $body['email'] !== null
+    if (array_key_exists('email', $body) && $body['email'] !== null && $body['email'] !== ''
         && (!is_string($body['email']) || filter_var($body['email'], FILTER_VALIDATE_EMAIL) === false)) {
         $errors[] = 'email must be an email';
     }
@@ -1039,7 +1042,7 @@ function awikValidateManagedUserInput(array $body, bool $create): array
     if (isset($body['password']) && is_string($body['password']) && mb_strlen($body['password']) < 8) {
         $errors[] = 'password must be longer than or equal to 8 characters';
     }
-    if (array_key_exists('email', $body) && $body['email'] !== null
+    if (array_key_exists('email', $body) && $body['email'] !== null && $body['email'] !== ''
         && (!is_string($body['email']) || filter_var($body['email'], FILTER_VALIDATE_EMAIL) === false)) {
         $errors[] = 'email must be an email';
     }
@@ -3148,6 +3151,9 @@ function awikInventoryRouteMatches(string $method, string $path): ?array
     if ($routePath === $productBase && $method === 'POST') {
         return ['kind' => 'product-create'];
     }
+    if ($routePath === $productBase . '/import' && $method === 'POST') {
+        return ['kind' => 'product-import'];
+    }
     if (preg_match('~^' . preg_quote($productBase, '~') . '/([^/]+)$~', $routePath, $matches) === 1) {
         if ($method === 'GET') {
             return ['kind' => 'product-detail', 'id' => rawurldecode($matches[1])];
@@ -3569,6 +3575,175 @@ function awikHandleInventoryRequest(PDO $db, string $method, string $path, array
         return awikResponse(201, ['success' => true, 'data' => awikNormalizeInventoryProductRow($product, ['id' => $product['categoryId'], 'name' => $product['categoryName']])]);
     }
 
+    if ($route['kind'] === 'product-import' && $method === 'POST') {
+        if (!$isAdmin) {
+            throw new AwikApiException(403, 'Forbidden');
+        }
+        $rows = $body['rows'] ?? null;
+        if (!is_array($rows)) {
+            throw new AwikApiException(400, 'Validation failed', ['rows must be an array']);
+        }
+        if ($rows === []) {
+            throw new AwikApiException(400, 'Validation failed', ['rows must not be empty']);
+        }
+        if (count($rows) > 2000) {
+            throw new AwikApiException(400, 'Validation failed', ['rows must not contain more than 2000 items']);
+        }
+
+        $categoryByName = [];
+        foreach ($db->query('SELECT id, name FROM awik_inventory_categories')->fetchAll() as $categoryRow) {
+            $categoryByName[mb_strtolower(trim((string) $categoryRow['name']))] = $categoryRow['id'];
+        }
+        $skuSet = [];
+        foreach ($db->query('SELECT sku FROM awik_products WHERE deletedAt IS NULL')->fetchAll() as $existing) {
+            $skuSet[mb_strtolower(trim((string) $existing['sku']))] = true;
+        }
+        $barcodeSet = [];
+        foreach ($db->query('SELECT barcode FROM awik_products WHERE deletedAt IS NULL AND barcode IS NOT NULL')->fetchAll() as $existing) {
+            $barcodeSet[trim((string) $existing['barcode'])] = true;
+        }
+
+        $results = [];
+        $imported = 0;
+        $failed = 0;
+        $createdCategories = [];
+
+        foreach (array_values($rows) as $index => $rawRow) {
+            $rowNumber = $index + 1;
+            if ($rawRow instanceof stdClass) {
+                $rawRow = get_object_vars($rawRow);
+            }
+            if (!is_array($rawRow)) {
+                $failed++;
+                $results[] = ['row' => $rowNumber, 'status' => 'failed', 'error' => 'Row must be an object'];
+                continue;
+            }
+            try {
+                $categoryName = trim((string) ($rawRow['category'] ?? ''));
+                if ($categoryName === '') {
+                    throw new AwikApiException(400, 'Validation failed', ['category should not be empty']);
+                }
+                $candidate = [];
+                foreach (['name', 'sku', 'barcode', 'description', 'imageUrl', 'purchasePrice', 'sellingPrice', 'currency', 'initialStock', 'initialStockNote', 'minStock', 'unit'] as $field) {
+                    if (array_key_exists($field, $rawRow) && $rawRow[$field] !== null && $rawRow[$field] !== '') {
+                        $candidate[$field] = $rawRow[$field];
+                    }
+                }
+                if (array_key_exists('isActive', $rawRow) && $rawRow['isActive'] !== null && $rawRow['isActive'] !== '') {
+                    $candidate['isActive'] = filter_var($rawRow['isActive'], FILTER_VALIDATE_BOOLEAN);
+                }
+                if (!isset($candidate['currency'])) {
+                    $candidate['currency'] = 'USD';
+                }
+                // awikValidateProductInput requires categoryId on create; pass the
+                // category name as a placeholder so validation runs before we
+                // resolve (or create) the real category row inside the transaction.
+                $candidate['categoryId'] = $categoryName;
+                $input = awikValidateProductInput($candidate, true);
+
+                $skuKey = mb_strtolower(trim((string) $input['sku']));
+                if (isset($skuSet[$skuKey])) {
+                    throw new AwikApiException(409, 'SKU already exists');
+                }
+                if (!empty($input['barcode'])) {
+                    if (isset($barcodeSet[trim((string) $input['barcode'])])) {
+                        throw new AwikApiException(409, 'Barcode already exists');
+                    }
+                }
+                $initialStock = (int) ($input['initialStock'] ?? 0);
+                if ($initialStock < 0) {
+                    throw new AwikApiException(400, 'Initial stock cannot be negative');
+                }
+
+                $categoryKey = mb_strtolower($categoryName);
+                $productId = awikUuidV4();
+                $db->beginTransaction();
+                try {
+                    if (isset($categoryByName[$categoryKey])) {
+                        $categoryId = $categoryByName[$categoryKey];
+                    } else {
+                        $existingCategory = $db->prepare('SELECT id FROM awik_inventory_categories WHERE LOWER(TRIM(name)) = ? LIMIT 1');
+                        $existingCategory->execute([strtolower(trim($categoryName))]);
+                        $found = $existingCategory->fetch();
+                        if ($found) {
+                            $categoryId = $found['id'];
+                        } else {
+                            $categoryId = awikUuidV4();
+                            $db->prepare('INSERT INTO awik_inventory_categories (id, name) VALUES (?, ?)')->execute([$categoryId, $categoryName]);
+                            $createdCategories[$categoryName] = $categoryId;
+                        }
+                        $categoryByName[$categoryKey] = $categoryId;
+                    }
+                    $db->prepare(
+                        'INSERT INTO awik_products (id, name, sku, barcode, categoryId, description, imageUrl, purchasePrice, sellingPrice, currency, currentStock, minStock, unit, isActive) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                    )->execute([
+                        $productId,
+                        $input['name'],
+                        $input['sku'],
+                        $input['barcode'] ?? null,
+                        $categoryId,
+                        $input['description'] ?? null,
+                        $input['imageUrl'] ?? null,
+                        (string) $input['purchasePrice'],
+                        (string) $input['sellingPrice'],
+                        $input['currency'] ?? 'USD',
+                        $initialStock,
+                        (int) ($input['minStock'] ?? 0),
+                        $input['unit'] ?? 'piece',
+                        !empty($input['isActive']) ? 1 : 0,
+                    ]);
+                    if ($initialStock > 0) {
+                        $db->prepare(
+                            'INSERT INTO awik_stock_movements (id, productId, userId, movementType, quantity, previousStock, newStock, reference, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                        )->execute([
+                            awikUuidV4(),
+                            $productId,
+                            $user['id'],
+                            'PURCHASE',
+                            $initialStock,
+                            0,
+                            $initialStock,
+                            'csv-import',
+                            $input['initialStockNote'] ?? 'Initial stock on import (row ' . $rowNumber . ')',
+                        ]);
+                    }
+                    $db->commit();
+                } catch (Throwable $exception) {
+                    if ($db->inTransaction()) {
+                        $db->rollBack();
+                    }
+                    throw $exception;
+                }
+                $skuSet[$skuKey] = true;
+                if (!empty($input['barcode'])) {
+                    $barcodeSet[trim((string) $input['barcode'])] = true;
+                }
+                $imported++;
+                $results[] = ['row' => $rowNumber, 'status' => 'imported', 'id' => $productId, 'sku' => $input['sku'], 'name' => $input['name']];
+            } catch (Throwable $exception) {
+                $failed++;
+                $message = $exception instanceof AwikApiException ? $exception->getMessage() : 'Import failed';
+                if ($exception instanceof AwikApiException && !empty($exception->errors)) {
+                    $message .= ': ' . implode(', ', $exception->errors);
+                }
+                $results[] = [
+                    'row' => $rowNumber,
+                    'status' => 'failed',
+                    'sku' => is_array($rawRow) && isset($rawRow['sku']) && is_string($rawRow['sku']) ? $rawRow['sku'] : null,
+                    'error' => $message,
+                ];
+            }
+        }
+
+        return awikResponse(200, ['success' => true, 'data' => [
+            'imported' => $imported,
+            'failed' => $failed,
+            'total' => count($rows),
+            'createdCategories' => array_keys($createdCategories),
+            'results' => $results,
+        ]]);
+    }
+
     if ($route['kind'] === 'product-detail' && $method === 'GET') {
         $id = $route['id'];
         $statement = $db->prepare('SELECT p.*, c.name AS categoryName FROM awik_products p LEFT JOIN awik_inventory_categories c ON c.id = p.categoryId WHERE p.id = ? AND p.deletedAt IS NULL LIMIT 1');
@@ -3754,6 +3929,12 @@ function awikValidateSaleInput(array $body): array
     }
     $items = [];
     foreach ($body['items'] as $item) {
+        // JSON bodies are decoded with objects preserved as stdClass so empty
+        // objects ({}) stay distinguishable from empty arrays ([]). Normalize
+        // each decoded object here so line items reach the validator as arrays.
+        if (is_object($item)) {
+            $item = get_object_vars($item);
+        }
         if (!is_array($item)) {
             throw new AwikApiException(400, 'Validation failed', ['items' => ['must be an array of objects']]);
         }
@@ -3787,14 +3968,48 @@ function awikSaleRouteMatches(string $method, string $path): ?array
     return null;
 }
 
+function awikFormatMoney(mixed $value): string
+{
+    return number_format((float) $value, 2, '.', '');
+}
+
+function awikNormalizeSaleItemRow(array $row): array
+{
+    $item = [
+        'id' => $row['id'] ?? null,
+        'saleId' => $row['saleId'] ?? null,
+        'productId' => $row['productId'] ?? null,
+        'quantity' => (int) ($row['quantity'] ?? 0),
+        'unitPrice' => awikFormatMoney($row['unitPrice'] ?? 0),
+        'totalPrice' => awikFormatMoney($row['totalPrice'] ?? 0),
+        'createdAt' => $row['createdAt'] ?? null,
+    ];
+    if (isset($row['costPrice'])) {
+        $item['costPrice'] = awikFormatMoney($row['costPrice']);
+        $item['lineCost'] = awikFormatMoney($row['lineCost'] ?? 0);
+        $item['lineProfit'] = awikFormatMoney($row['lineProfit'] ?? 0);
+    }
+    if (isset($row['product']) && is_array($row['product'])) {
+        $item['product'] = $row['product'];
+    }
+    return $item;
+}
+
 function awikNormalizeSaleRow(array $row): array
 {
-    return [
+    $items = [];
+    foreach (($row['items'] ?? []) as $item) {
+        if (is_array($item)) {
+            $items[] = awikNormalizeSaleItemRow($item);
+        }
+    }
+
+    $sale = [
         'id' => $row['id'] ?? null,
         'saleNumber' => $row['saleNumber'] ?? null,
         'customerId' => $row['customerId'] ?? null,
         'userId' => $row['userId'] ?? null,
-        'totalAmount' => (string) ($row['totalAmount'] ?? '0'),
+        'totalAmount' => awikFormatMoney($row['totalAmount'] ?? 0),
         'currency' => $row['currency'] ?? 'USD',
         'paymentMethod' => $row['paymentMethod'] ?? null,
         'status' => $row['status'] ?? null,
@@ -3803,8 +4018,88 @@ function awikNormalizeSaleRow(array $row): array
         'updatedAt' => $row['updatedAt'] ?? null,
         'customer' => $row['customer'] ?? null,
         'user' => $row['user'] ?? null,
-        'items' => $row['items'] ?? [],
+        'items' => $items,
     ];
+    if (isset($row['cost'])) {
+        $sale['cost'] = awikFormatMoney($row['cost']);
+        $sale['profit'] = awikFormatMoney($row['profit'] ?? 0);
+    }
+    return $sale;
+}
+
+/**
+ * Loads sale lines enriched with product identity and cost so the UI can show
+ * profit. Cost is taken from the product's current purchasePrice (no per-sale
+ * cost snapshot exists yet), so profit is an estimate based on today's cost.
+ */
+function awikLoadEnrichedSaleItems(PDO $db, array $saleIds): array
+{
+    $map = [];
+    if ($saleIds === []) {
+        return $map;
+    }
+    $placeholders = implode(',', array_fill(0, count($saleIds), '?'));
+    $statement = $db->prepare(
+        'SELECT si.saleId AS saleId, si.id AS id, si.productId AS productId, si.quantity AS quantity, '
+        . 'si.unitPrice AS unitPrice, si.totalPrice AS totalPrice, '
+        . 'p.name AS productName, p.sku AS productSku, p.barcode AS productBarcode, p.unit AS productUnit, '
+        . 'p.purchasePrice AS purchasePrice '
+        . 'FROM awik_sale_items si '
+        . 'LEFT JOIN awik_products p ON p.id = si.productId '
+        . 'WHERE si.saleId IN (' . $placeholders . ') '
+        . 'ORDER BY si.createdAt ASC'
+    );
+    $statement->execute(array_values($saleIds));
+    foreach ($statement->fetchAll() as $row) {
+        $saleId = (string) $row['saleId'];
+        $quantity = (int) ($row['quantity'] ?? 0);
+        $totalPrice = (float) ($row['totalPrice'] ?? 0);
+        $unitCost = (float) ($row['purchasePrice'] ?? 0);
+        $lineCost = $unitCost * $quantity;
+        $map[$saleId][] = [
+            'id' => $row['id'] ?? null,
+            'saleId' => $saleId,
+            'productId' => $row['productId'] ?? null,
+            'quantity' => $quantity,
+            'unitPrice' => awikFormatMoney($row['unitPrice'] ?? 0),
+            'totalPrice' => awikFormatMoney($row['totalPrice'] ?? 0),
+            'costPrice' => awikFormatMoney($unitCost),
+            'lineCost' => awikFormatMoney($lineCost),
+            'lineProfit' => awikFormatMoney($totalPrice - $lineCost),
+            'product' => [
+                'id' => $row['productId'] ?? null,
+                'name' => $row['productName'] ?? null,
+                'sku' => $row['productSku'] ?? null,
+                'barcode' => $row['productBarcode'] ?? null,
+                'unit' => $row['productUnit'] ?? null,
+            ],
+        ];
+    }
+    return $map;
+}
+
+/**
+ * Attaches the sale's customer and cashier so the UI (invoice, receipt, detail
+ * page) can render them. The list endpoint builds these inline; single-sale
+ * responses need this helper.
+ */
+function awikAttachSaleRelations(PDO $db, array $sale): array
+{
+    if (!empty($sale['customerId'])) {
+        $statement = $db->prepare('SELECT id, firstName, lastName, phone, email, address FROM awik_customers WHERE id = ? LIMIT 1');
+        $statement->execute([$sale['customerId']]);
+        $sale['customer'] = $statement->fetch() ?: null;
+    } else {
+        $sale['customer'] = null;
+    }
+    if (!empty($sale['userId'])) {
+        $statement = $db->prepare('SELECT id, firstName, lastName FROM awik_users WHERE id = ? LIMIT 1');
+        $statement->execute([$sale['userId']]);
+        $sale['user'] = $statement->fetch() ?: null;
+    } else {
+        $sale['user'] = null;
+    }
+    return $sale;
 }
 
 function awikGenerateSaleNumber(): string
@@ -3853,9 +4148,11 @@ function awikHandleSaleRequest(PDO $db, string $method, string $path, array $que
             $params[] = $query['dateTo'];
         }
         if (!empty($query['search'])) {
-            $where[] = '(s.saleNumber LIKE ? OR c.phone LIKE ? OR c.firstName LIKE ? OR c.lastName LIKE ?)';
+            $where[] = '(s.saleNumber LIKE ? OR c.phone LIKE ? OR c.firstName LIKE ? OR c.lastName LIKE ? '
+                . 'OR EXISTS (SELECT 1 FROM awik_sale_items si JOIN awik_products p ON p.id = si.productId '
+                . 'WHERE si.saleId = s.id AND p.name LIKE ?))';
             $needle = '%' . (string) $query['search'] . '%';
-            $params = array_merge($params, [$needle, $needle, $needle, $needle]);
+            $params = array_merge($params, [$needle, $needle, $needle, $needle, $needle]);
         }
         $whereSql = $where !== [] ? ' WHERE ' . implode(' AND ', $where) : '';
         $count = $db->prepare('SELECT COUNT(*) FROM awik_sales s LEFT JOIN awik_customers c ON c.id = s.customerId' . $whereSql);
@@ -3877,18 +4174,29 @@ function awikHandleSaleRequest(PDO $db, string $method, string $path, array $que
         $statement->bindValue($index, ($page - 1) * $limit, PDO::PARAM_INT);
         $statement->execute();
         $rows = $statement->fetchAll();
+        $saleIds = array_map(static fn (array $row): string => (string) $row['id'], $rows);
+        $itemsBySale = awikLoadEnrichedSaleItems($db, $saleIds);
         $result = [];
         foreach ($rows as $row) {
+            $saleId = (string) $row['id'];
+            $items = $itemsBySale[$saleId] ?? [];
+            $cost = 0.0;
+            foreach ($items as $item) {
+                $cost += (float) $item['lineCost'];
+            }
+            $totalAmount = (float) $row['totalAmount'];
             $result[] = [
                 'id' => $row['id'],
                 'saleNumber' => $row['saleNumber'],
                 'customerId' => $row['customerId'],
                 'userId' => $row['userId'],
-                'totalAmount' => (string) $row['totalAmount'],
+                'totalAmount' => awikFormatMoney($row['totalAmount']),
                 'currency' => $row['currency'],
                 'paymentMethod' => $row['paymentMethod'],
                 'status' => $row['status'],
                 'notes' => $row['notes'],
+                'cost' => awikFormatMoney($cost),
+                'profit' => awikFormatMoney($totalAmount - $cost),
                 'createdAt' => $row['createdAt'],
                 'updatedAt' => $row['updatedAt'],
                 'customer' => [
@@ -3902,7 +4210,7 @@ function awikHandleSaleRequest(PDO $db, string $method, string $path, array $que
                     'firstName' => $row['userFirstName'],
                     'lastName' => $row['userLastName'],
                 ],
-                'items' => [],
+                'items' => $items,
             ];
         }
         return awikResponse(200, ['success' => true, 'data' => ['data' => $result, 'total' => $total, 'page' => $page, 'limit' => $limit]]);
@@ -4014,26 +4322,14 @@ function awikHandleSaleRequest(PDO $db, string $method, string $path, array $que
         $createdSale = $db->prepare('SELECT * FROM awik_sales WHERE id = ? LIMIT 1');
         $createdSale->execute([$saleId]);
         $sale = $createdSale->fetch();
-        $items = $db->prepare('SELECT * FROM awik_sale_items WHERE saleId = ? ORDER BY createdAt ASC');
-        $items->execute([$saleId]);
+        $sale = awikAttachSaleRelations($db, $sale);
+        $enriched = awikLoadEnrichedSaleItems($db, [$saleId]);
+        $sale['items'] = $enriched[(string) $saleId] ?? [];
         return awikResponse(201, ['success' => true, 'data' => [
-            'sale' => [
-                'id' => $sale['id'],
-                'saleNumber' => $sale['saleNumber'],
-                'customerId' => $sale['customerId'],
-                'userId' => $sale['userId'],
-                'totalAmount' => (string) $sale['totalAmount'],
-                'currency' => $sale['currency'],
-                'paymentMethod' => $sale['paymentMethod'],
-                'status' => $sale['status'],
-                'notes' => $sale['notes'],
-                'createdAt' => $sale['createdAt'],
-                'updatedAt' => $sale['updatedAt'],
-                'items' => $items->fetchAll(),
-            ],
+            'sale' => awikNormalizeSaleRow($sale),
             'receipt' => [
                 'saleNumber' => $sale['saleNumber'],
-                'totalAmount' => (string) $sale['totalAmount'],
+                'totalAmount' => awikFormatMoney($sale['totalAmount']),
                 'currency' => $sale['currency'],
                 'paymentMethod' => $sale['paymentMethod'],
                 'items' => count($lines),
@@ -4050,9 +4346,15 @@ function awikHandleSaleRequest(PDO $db, string $method, string $path, array $que
         if (!$row) {
             throw new AwikApiException(404, 'Sale not found');
         }
-        $items = $db->prepare('SELECT * FROM awik_sale_items WHERE saleId = ? ORDER BY createdAt ASC');
-        $items->execute([$saleId]);
-        $row['items'] = $items->fetchAll();
+        $row = awikAttachSaleRelations($db, $row);
+        $enriched = awikLoadEnrichedSaleItems($db, [$saleId]);
+        $row['items'] = $enriched[(string) $saleId] ?? [];
+        $cost = 0.0;
+        foreach ($row['items'] as $item) {
+            $cost += (float) $item['lineCost'];
+        }
+        $row['cost'] = awikFormatMoney($cost);
+        $row['profit'] = awikFormatMoney((float) $row['totalAmount'] - $cost);
         return awikResponse(200, ['success' => true, 'data' => awikNormalizeSaleRow($row)]);
     }
 
@@ -4133,7 +4435,7 @@ function awikHandleSaleRequest(PDO $db, string $method, string $path, array $que
             }
 
             $db->commit();
-            return awikResponse(200, ['success' => true, 'data' => $updatedSale]);
+            return awikResponse(200, ['success' => true, 'data' => awikNormalizeSaleRow($updatedSale)]);
         } catch (Throwable $exception) {
             if ($db->inTransaction()) {
                 $db->rollBack();
@@ -6489,6 +6791,28 @@ function awikHandleRequest(array $request): array
             return $whatsAppResponse;
         }
 
+        if ($method === 'GET' && $path === '/api/v1/company/branding') {
+            $keys = ['company.name', 'company.tagline', 'company.logo'];
+            $placeholders = implode(', ', array_fill(0, count($keys), '?'));
+            $statement = $db->prepare(
+                'SELECT `key`, `value` FROM awik_company_settings WHERE `key` IN (' . $placeholders . ')'
+            );
+            $statement->execute($keys);
+            $map = [];
+            foreach ($statement->fetchAll() as $row) {
+                $map[$row['key']] = (string) ($row['value'] ?? '');
+            }
+
+            return awikResponse(200, [
+                'success' => true,
+                'data' => [
+                    'name' => $map['company.name'] ?? '',
+                    'tagline' => $map['company.tagline'] ?? '',
+                    'logo' => $map['company.logo'] ?? '',
+                ],
+            ]);
+        }
+
         if ($method === 'GET' && $path === '/api/v1/settings') {
             $user = awikRequireAuthenticatedUser($db, $headers);
             awikRequireSettingsRole($user, $method);
@@ -6509,6 +6833,12 @@ function awikHandleRequest(array $request): array
             awikRequireSettingsRole($user, $method);
 
             $key = rawurldecode($matches[1]);
+            if (preg_match('~^[A-Za-z0-9_.:-]{1,191}$~', $key) !== 1) {
+                throw new AwikApiException(400, 'Validation failed', [
+                    'key' => ['must be a valid setting key'],
+                ]);
+            }
+
             $update = awikValidateSettingUpdateBody($body);
             $find = $db->prepare(
                 'SELECT id, `key`, `value`, description, createdAt, updatedAt '
@@ -6517,13 +6847,19 @@ function awikHandleRequest(array $request): array
             $find->execute([$key]);
             $setting = $find->fetch();
             if (!$setting) {
-                throw new AwikApiException(
-                    404,
-                    'Setting "' . $key . '" not found. Use the seed or add it first.'
-                );
-            }
-
-            if ($update['descriptionProvided']) {
+                // Upsert: a valid key that has not been seeded yet is created on
+                // first write rather than rejected, so settings pages (print
+                // layout, WhatsApp credentials, ...) always save successfully.
+                $db->prepare(
+                    'INSERT INTO awik_company_settings (id, `key`, `value`, description) '
+                    . 'VALUES (?, ?, ?, ?)'
+                )->execute([
+                    awikUuidV4(),
+                    $key,
+                    $update['value'],
+                    $update['description'] ?? null,
+                ]);
+            } elseif ($update['descriptionProvided']) {
                 $db->prepare(
                     'UPDATE awik_company_settings SET `value` = ?, description = ?, updatedAt = '
                     . awikCurrentTimestampSql($db) . ' WHERE `key` = ?'
@@ -6779,10 +7115,8 @@ function awikHandleRequest(array $request): array
                         throw new AwikApiException(409, 'Email already in use');
                     }
                 } else {
-                    if ($value === '') {
-                        $errors[$inputKey] = ['is required'];
-                        continue;
-                    }
+                    // Names are optional so a profile with a blank last name can
+                    // still be saved; only over-length input is rejected here.
                     if (mb_strlen($value) > 100) {
                         $errors[$inputKey] = ['must be 100 characters or fewer'];
                         continue;

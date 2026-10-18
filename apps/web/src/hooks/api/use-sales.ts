@@ -11,7 +11,11 @@ export interface SaleItem {
   quantity: number;
   unitPrice: number | string;
   totalPrice: number | string;
-  product?: { id: string; name: string; sku: string; barcode?: string | null };
+  /** Present on enriched responses (list/detail/create). */
+  costPrice?: number | string;
+  lineCost?: number | string;
+  lineProfit?: number | string;
+  product?: { id: string; name: string; sku: string; barcode?: string | null; unit?: string | null };
 }
 
 export interface SaleCustomer {
@@ -37,6 +41,9 @@ export interface Sale {
   paymentMethod: string;
   status: "COMPLETED" | "REFUNDED" | "CANCELLED";
   notes?: string | null;
+  /** Estimated cost (from product purchasePrice) and resulting profit. */
+  cost?: number | string;
+  profit?: number | string;
   customer?: SaleCustomer | null;
   user?: SaleUser | null;
   items: SaleItem[];

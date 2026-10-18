@@ -3,6 +3,34 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { clearStoredTokens, setStoredTokens } from "@/lib/auth-storage";
 
 const AUTH_COOKIE_NAME = "awiknet_session";
+const AUTH_PERSIST_KEY = "AWIK NET-auth";
+
+/**
+ * Synchronously read whether a session exists in storage.
+ *
+ * The persisted zustand store rehydrates asynchronously, and on the first
+ * paint `isAuthenticated` is still `false` even for a logged-in user. That
+ * races route guards and can bounce users back to /login (or leave them on a
+ * spinner) after a hard page load. This reads storage directly so guards can
+ * make a correct decision immediately.
+ */
+export function readStoredIsAuthenticated(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = window.sessionStorage.getItem(AUTH_PERSIST_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as { state?: { isAuthenticated?: boolean } };
+      if (parsed?.state?.isAuthenticated) return true;
+    }
+  } catch {
+    // fall through to token check
+  }
+  try {
+    return !!window.sessionStorage.getItem("awiknet_access_token");
+  } catch {
+    return false;
+  }
+}
 
 function safeSetCookie(name: string, value: string, maxAgeDays = 7) {
   if (typeof document === "undefined") return;
@@ -83,7 +111,7 @@ export const useAuthStore = create<AuthState>()(
       },
     }),
     {
-      name: "AWIK NET-auth",
+      name: AUTH_PERSIST_KEY,
       storage: createJSONStorage(() => {
         const fallbackStorage = (() => {
           const values = new Map<string, string>();

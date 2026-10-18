@@ -73,4 +73,26 @@ export function useCompanyProfile() {
   return query;
 }
 
+export interface CompanyBranding {
+  name: string;
+  tagline: string;
+  logo: string;
+}
+
+/**
+ * Public company branding (name / tagline / logo) for unauthenticated screens
+ * such as the login page. Backed by `GET /company/branding`, which requires no
+ * auth — using the authenticated `/settings` endpoint here would 401, trip the
+ * global 401 handler's hard redirect, and abort the login request mid-flight.
+ */
+export function useCompanyBranding() {
+  return useQuery({
+    queryKey: ["company-branding"],
+    queryFn: () =>
+      api.get<CompanyBranding>("/company/branding"),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+  });
+}
+
 export const COMPANY_SETTING_KEYS = COMPANY_KEYS;

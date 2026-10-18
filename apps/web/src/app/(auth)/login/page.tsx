@@ -7,6 +7,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
+import { useLocalization } from "@/hooks/use-localization";
 import { loginSchema, type LoginInput } from "@/lib/validations";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ import {
 export default function LoginPage() {
   const router = useRouter();
   const { signIn } = useAuth();
+  const { t } = useLocalization();
   const [showPassword, setShowPassword] = React.useState(false);
   const [isLoading, setIsLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -47,11 +49,11 @@ export default function LoginPage() {
     setIsLoading(true);
     setError(null);
     try {
-      await signIn(data.identifier, data.password);
-      router.push("/sales/pos");
+      const user = await signIn(data.identifier, data.password);
+      router.push(user?.role === "ADMIN" ? "/dashboard" : "/sales/pos");
     } catch (err: unknown) {
       const apiErr = err as { message?: string };
-      setError(apiErr.message || "Invalid phone/email or password");
+      setError(apiErr.message || t("auth.loginError"));
     } finally {
       setIsLoading(false);
     }
@@ -60,9 +62,9 @@ export default function LoginPage() {
   return (
     <Card className="w-full">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold">Sign in</CardTitle>
+        <CardTitle className="text-2xl font-bold">{t("auth.loginTitle")}</CardTitle>
         <CardDescription>
-          Enter your phone number or email and password to access your account
+          {t("auth.loginDescription")}
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit(onSubmit)}>
@@ -73,31 +75,27 @@ export default function LoginPage() {
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="identifier">Phone or Email</Label>
+            <Label htmlFor="identifier">{t("auth.phone")}</Label>
             <Input
               id="identifier"
               type="text"
               autoComplete="username"
               inputMode="email"
-              placeholder="+96170000000 or admin@awiknet.example"
+              placeholder="+96170000000"
               {...register("identifier")}
               aria-invalid={!!errors.identifier}
             />
             {errors.identifier ? (
               <p className="text-xs text-destructive">{errors.identifier.message}</p>
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                Use your phone number in international format or your email address
-              </p>
-            )}
+            ) : null}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
+            <Label htmlFor="password">{t("auth.password")}</Label>
             <div className="relative">
               <Input
                 id="password"
                 type={showPassword ? "text" : "password"}
-                placeholder="Enter your password"
+                placeholder={t("auth.password")}
                 {...register("password")}
                 aria-invalid={!!errors.password}
               />
@@ -124,30 +122,19 @@ export default function LoginPage() {
                 onCheckedChange={(checked) => setValue("rememberMe", !!checked)}
               />
               <Label htmlFor="rememberMe" className="text-sm font-normal cursor-pointer">
-                Remember me
+                {t("auth.rememberMe")}
               </Label>
             </div>
             <Link className="ms-auto text-sm text-primary underline-offset-4 hover:underline" href="/forgot-password/">
-              Forgot password?
+              {t("auth.forgotPassword")}
             </Link>
           </div>
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
           <Button type="submit" className="w-full" disabled={isLoading}>
             {isLoading && <Loader2 className="me-2 h-4 w-4 animate-spin" />}
-            Sign in
+            {t("auth.login")}
           </Button>
-
-          <div className="relative w-full">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-card px-2 text-muted-foreground">Or</span>
-            </div>
-          </div>
-
-
         </CardFooter>
       </form>
     </Card>

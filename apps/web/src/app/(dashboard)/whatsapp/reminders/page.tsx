@@ -5,6 +5,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { BellRing, Send, MessageCircle, ExternalLink, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { useLocalization } from "@/hooks/use-localization";
 import { usePagination } from "@/hooks/use-pagination";
 import { PageHeader } from "@/components/ui/page-header";
 import { DataTable } from "@/components/ui/data-table";
@@ -69,6 +70,7 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export default function ExpiryNotificationsPage() {
+  const { t } = useLocalization();
   const { page, limit, setPage } = usePagination();
   const [status, setStatus] = React.useState("all");
   const queryClient = useQueryClient();
@@ -92,10 +94,10 @@ export default function ExpiryNotificationsPage() {
     mutationFn: () => api.post("/whatsapp/reminders/trigger"),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["whatsapp-reminders"] });
-      toast.success("Due reminders processed");
+      toast.success(t("whatsappPages.dueRemindersProcessed"));
     },
     onError: (err: { message?: string }) => {
-      toast.error(err.message || "Failed to trigger automatic reminders");
+      toast.error(err.message || t("whatsappPages.failedToTriggerAutomaticReminders"));
     },
   });
 
@@ -114,7 +116,7 @@ export default function ExpiryNotificationsPage() {
     });
 
     openWhatsAppWeb(item.phone, text);
-    toast.success(`Opening WhatsApp for ${item.customerName}...`);
+    toast.success(`${t("whatsappPages.openingWhatsappFor")} ${item.customerName}...`);
   };
 
   const reminders = data?.data || [];
@@ -170,7 +172,7 @@ export default function ExpiryNotificationsPage() {
     },
     {
       id: "actions",
-      header: "Direct WhatsApp (Free)",
+      header: t("whatsappPages.directWhatsappFree"),
       cell: ({ row }) => {
         const customer = row.original.subscription?.customer;
         const plan = row.original.subscription?.plan;
@@ -202,11 +204,11 @@ export default function ExpiryNotificationsPage() {
             className="h-7 gap-1 text-xs text-green-700 hover:text-green-800 hover:bg-green-50 border-green-200"
             onClick={() => {
               openWhatsAppWeb(customer.phone, text);
-              toast.success(`Opening WhatsApp for ${customer.firstName}...`);
-            }}
-          >
-            <MessageCircle className="h-3.5 w-3.5 text-green-600" />
-            Send in WhatsApp
+               toast.success(`${t("whatsappPages.openingWhatsappFor")} ${customer.firstName}...`);
+             }}
+           >
+             <MessageCircle className="h-3.5 w-3.5 text-green-600" />
+             {t("whatsappPages.sendInWhatsapp")}
           </Button>
         );
       },
@@ -216,8 +218,8 @@ export default function ExpiryNotificationsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Expiry Notifications"
-        description="Customers who receive a reminder when their plan is about to expire (Free via WhatsApp Web or automated API)"
+        title={t("whatsappPages.expiryNotifications")}
+        description={t("whatsappPages.expiryNotificationsDesc")}
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -229,20 +231,20 @@ export default function ExpiryNotificationsPage() {
                     setTimeout(() => handleOpenWhatsAppDue(r), idx * 600);
                   });
                 } else {
-                  toast.info("No due reminders right now");
+                  toast.info(t("whatsappPages.noDueRemindersRightNow"));
                 }
               }}
               disabled={!due?.count}
             >
               <MessageCircle className="h-4 w-4 text-green-600" />
-              Open All Due in WhatsApp (Free)
+              {t("whatsappPages.openAllDueInWhatsappFree")}
             </Button>
             <Button
               onClick={() => sendDueMutation.mutate()}
               disabled={sendDueMutation.isPending || !due?.count}
             >
               <Send className="me-2 h-4 w-4" />
-              Auto-Send via API
+              {t("whatsappPages.autoSendViaApi")}
             </Button>
           </div>
         }
@@ -256,16 +258,16 @@ export default function ExpiryNotificationsPage() {
               <BellRing className="h-5 w-5" />
             </div>
             <div className="flex-1">
-              <p className="text-base font-semibold">
-                {due?.count
-                  ? `${due.count} customer reminder${due.count === 1 ? "" : "s"} due today`
-                  : "No reminders due today"}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {due?.count
-                  ? "Click 'Send in WhatsApp' next to any customer below to instantly open WhatsApp with the personalized reminder message pre-filled for free."
-                  : "Customers will appear here automatically when their plan is 5, 3, or 1 day(s) before expiry."}
-              </p>
+               <p className="text-base font-semibold">
+                 {due?.count
+                   ? `${due.count} ${due.count === 1 ? t("whatsappPages.customerReminder") : t("whatsappPages.customerReminders")} ${t("whatsappPages.dueToday")}`
+                   : t("whatsappPages.noRemindersDueToday")}
+               </p>
+               <p className="text-xs text-muted-foreground">
+                 {due?.count
+                   ? t("whatsappPages.clickSendInWhatsappBelow")
+                   : t("whatsappPages.customersWillAppearWhen")}
+               </p>
             </div>
           </div>
 

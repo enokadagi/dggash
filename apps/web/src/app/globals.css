@@ -162,6 +162,14 @@
   border-bottom-right-radius: 0;
 }
 
+html[dir="rtl"] body {
+  font-family: var(--font-arabic), var(--font-sans);
+}
+
+html[dir="rtl"] .font-arabic {
+  font-family: var(--font-arabic), var(--font-sans);
+}
+
 .prose {
   @apply max-w-none text-foreground;
 }

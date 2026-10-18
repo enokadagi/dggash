@@ -47,6 +47,14 @@ $valid = awikValidateSaleInput([
 awikSalesTestAssert($valid['paymentMethod'] === 'cash', 'sale payment method mismatch');
 awikSalesTestAssert($valid['items'][0]['quantity'] === 2, 'sale item quantity mismatch');
 
+// HTTP bodies are decoded with objects preserved as stdClass (so "{}" stays
+// distinct from "[]"), so line items arrive as stdClass and must still validate.
+$decodedSale = awikDecodeJsonBody('{"items":[{"productId":"p-1","quantity":2}],"paymentMethod":"cash","currency":"USD"}');
+$validDecoded = awikValidateSaleInput($decodedSale);
+awikSalesTestAssert($validDecoded['items'][0]['productId'] === 'p-1', 'decoded sale item product id mismatch');
+awikSalesTestAssert($validDecoded['items'][0]['quantity'] === 2, 'decoded sale item quantity mismatch');
+awikSalesTestAssert($validDecoded['paymentMethod'] === 'cash', 'decoded sale payment method mismatch');
+
 awikSalesTestExpectStatus(
     static fn () => awikValidateSaleInput(['items' => [['productId' => 'p-1', 'quantity' => 0]], 'paymentMethod' => 'cash']),
     400,

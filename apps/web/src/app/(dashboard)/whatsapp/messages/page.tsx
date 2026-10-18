@@ -5,6 +5,7 @@ import { ColumnDef } from "@tanstack/react-table";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { api } from "@/lib/api";
+import { useLocalization } from "@/hooks/use-localization";
 import { usePagination } from "@/hooks/use-pagination";
 import { useDebounce } from "@/hooks/use-debounce";
 import { PageHeader } from "@/components/ui/page-header";
@@ -66,6 +67,7 @@ const statusVariant: Record<string, "success" | "destructive" | "secondary" | "d
 };
 
 export default function WhatsAppMessagesPage() {
+  const { t } = useLocalization();
   const { page, limit, setPage } = usePagination();
   const [search, setSearch] = React.useState("");
   const debouncedSearch = useDebounce(search);
@@ -106,14 +108,14 @@ export default function WhatsAppMessagesPage() {
     mutationFn: (payload: { recipientPhone: string; body: string; customerId?: string }) =>
       api.post("/whatsapp/send", payload),
     onSuccess: () => {
-      toast.success("Message queued successfully");
+      toast.success(t("whatsappPages.messageQueuedSuccess"));
       setSelectedCustomerId("");
       setRecipientPhone("");
       setBody("");
       setComposerOpen(false);
       queryClient.invalidateQueries({ queryKey: ["whatsapp-messages-log"] });
     },
-    onError: (err: { message?: string }) => toast.error(err.message || "Failed to send message"),
+    onError: (err: { message?: string }) => toast.error(err.message || t("whatsappPages.failedToSendMessage")),
   });
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -197,12 +199,12 @@ export default function WhatsAppMessagesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="WhatsApp Messages"
-        description="View all sent and received WhatsApp messages"
+        title={t("whatsappPages.whatsappMessages")}
+        description={t("whatsappPages.whatsappMessagesDesc")}
         actions={
           <Button onClick={() => setComposerOpen(true)}>
             <Plus className="me-2 h-4 w-4" />
-            New Message
+            {t("whatsappPages.newWhatsAppMessage")}
           </Button>
         }
       />
@@ -223,14 +225,14 @@ export default function WhatsAppMessagesPage() {
       <Dialog open={composerOpen} onOpenChange={setComposerOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New WhatsApp Message</DialogTitle>
-            <DialogDescription>Send a message to a WhatsApp number in international format.</DialogDescription>
+            <DialogTitle>{t("whatsappPages.newWhatsAppMessage")}</DialogTitle>
+            <DialogDescription>{t("whatsappPages.sendMessageToWhatsappNumber")}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="recipient-customer">Customer (optional)</Label>
+              <Label htmlFor="recipient-customer">{t("whatsappPages.customerOptional")}</Label>
               <Select value={selectedCustomerId} onValueChange={pickCustomer}>
-                <SelectTrigger id="recipient-customer"><SelectValue placeholder="Select a customer" /></SelectTrigger>
+                  <SelectTrigger id="recipient-customer"><SelectValue placeholder={t("whatsappPages.selectCustomer")} /></SelectTrigger>
                 <SelectContent>
                   {customers.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
@@ -241,18 +243,18 @@ export default function WhatsAppMessagesPage() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="recipient-phone">Recipient phone</Label>
+              <Label htmlFor="recipient-phone">{t("whatsappPages.recipientPhone")}</Label>
               <Input id="recipient-phone" placeholder="+96170000000" value={recipientPhone} onChange={(event) => setRecipientPhone(event.target.value)} />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="message-body">Message</Label>
+              <Label htmlFor="message-body">{t("whatsappPages.message")}</Label>
               <Textarea id="message-body" rows={5} value={body} onChange={(event) => setBody(event.target.value)} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setComposerOpen(false)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setComposerOpen(false)}>{t("common.cancel")}</Button>
             <Button disabled={sendMutation.isPending || !recipientPhone.trim() || !body.trim()} onClick={handleSend}>
-              {sendMutation.isPending ? "Sending..." : "Send Message"}
+              {sendMutation.isPending ? t("whatsappPages.sending") : t("whatsappPages.sendMessage")}
             </Button>
           </DialogFooter>
         </DialogContent>

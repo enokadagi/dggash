@@ -6,6 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { usePrinter, printerService } from "@/hooks/use-printer";
 import { buildSaleReceipt, type PaperWidth } from "@/lib/receipt";
+import { buildReceiptHtml, printHtmlDocument } from "@/lib/receipt-html";
+import { usePrintSettings } from "@/hooks/api/use-print-settings";
 import type { Sale } from "@/hooks/api/use-sales";
 import { Button } from "@/components/ui/button";
 
@@ -52,14 +54,17 @@ export function ReceiptPrintButton({ sale, cashierName, onPrinted }: Props) {
     staleTime: 60_000,
   });
 
+  const printSettings = usePrintSettings();
+
   const autoPrintEnabled = React.useMemo(() => {
+    if (printSettings.data?.thermal.autoPrint) return true;
     if (typeof localStorage === "undefined") return false;
     try {
       return localStorage.getItem(AUTO_PRINT_KEY) !== "false";
     } catch {
       return false;
     }
-  }, []);
+  }, [printSettings.data?.thermal.autoPrint]);
 
   const job = React.useMemo(
     () =>
@@ -102,20 +107,8 @@ export function ReceiptPrintButton({ sale, cashierName, onPrinted }: Props) {
     void doPrint();
   }, [autoPrintEnabled, printer.status, sale.id, doPrint]);
 
-  const ready = printer.status === "ready";
-
   return (
-    <Button
-      type="button"
-      variant="outline"
-      onClick={doPrint}
-      disabled={!ready || busy}
-      title={
-        ready
-          ? "Print receipt"
-          : "No printer connected. Connect one from Settings > Company."
-      }
-    >
+    <Button type="button" variant="outline" onClick={doPrint} disabled={busy}>
       {busy ? (
         <Loader2 className="me-2 h-4 w-4 animate-spin" />
       ) : (

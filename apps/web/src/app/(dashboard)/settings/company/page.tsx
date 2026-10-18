@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "@/lib/api";
+import { useLocalization } from "@/hooks/use-localization";
 import { Save, CheckCircle2, AlertCircle } from "lucide-react";
 
 interface SettingEntry {
@@ -32,6 +33,7 @@ const DEFAULTS: Record<string, string> = {
 };
 
 export default function CompanySettingsPage() {
+  const { t } = useLocalization();
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState(false);
@@ -75,31 +77,31 @@ export default function CompanySettingsPage() {
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err: any) {
-      setError(err.message || "Failed to save company settings");
+      setError(err.message || t("settingsPage.company.saveError"));
     } finally {
       setSaving(false);
     }
   };
 
-  if (isLoading) return <LoadingState message="Loading company settings..." />;
+  if (isLoading) return <LoadingState message={t("settingsPage.company.loading")} />;
   if (fetchError) return <ErrorState message={(fetchError as Error).message} onRetry={refetch} />;
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Company Settings"
-        description="Manage company information and preferences"
+        title={t("settingsPage.company.title")}
+        description={t("settingsPage.company.description")}
         actions={
           <Button onClick={handleSave} disabled={saving}>
             <Save className="me-2 h-4 w-4" />
-            {saving ? "Saving..." : "Save Changes"}
+            {saving ? t("settingsPage.saving") : t("profile.saveChanges")}
           </Button>
         }
       />
       {success && (
         <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700">
           <CheckCircle2 className="h-4 w-4" />
-          Company settings saved successfully
+          {t("settingsPage.company.savedSuccess")}
         </div>
       )}
       {error && (
@@ -110,13 +112,13 @@ export default function CompanySettingsPage() {
       )}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Company Information</CardTitle>
-          <CardDescription>Update your company details and preferences</CardDescription>
+          <CardTitle className="text-base">{t("settingsPage.company.infoTitle")}</CardTitle>
+          <CardDescription>{t("settingsPage.company.infoDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="companyName">Company Name</Label>
+              <Label htmlFor="companyName">{t("settings.companyName")}</Label>
               <Input
                 id="companyName"
                 value={form["company.name"]}
@@ -125,16 +127,16 @@ export default function CompanySettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="tagline">Tagline</Label>
+              <Label htmlFor="tagline">{t("settingsPage.company.tagline")}</Label>
               <Input
                 id="tagline"
                 value={form["company.tagline"]}
                 onChange={(e) => updateField("company.tagline", e.target.value)}
-                placeholder="INTERNET SERVICE PROVIDER"
+                placeholder={t("settingsPage.company.phTagline")}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="phone">Phone</Label>
+              <Label htmlFor="phone">{t("settingsPage.company.phone")}</Label>
               <Input
                 id="phone"
                 type="tel"
@@ -144,7 +146,7 @@ export default function CompanySettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="whatsapp">WhatsApp Number</Label>
+              <Label htmlFor="whatsapp">{t("settingsPage.company.whatsappNumber")}</Label>
               <Input
                 id="whatsapp"
                 type="tel"
@@ -154,7 +156,7 @@ export default function CompanySettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("auth.email")}</Label>
               <Input
                 id="email"
                 type="email"
@@ -164,7 +166,7 @@ export default function CompanySettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="website">Website</Label>
+              <Label htmlFor="website">{t("settingsPage.company.website")}</Label>
               <Input
                 id="website"
                 value={form["company.website"]}
@@ -173,7 +175,7 @@ export default function CompanySettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="taxId">Tax/VAT ID</Label>
+              <Label htmlFor="taxId">{t("settingsPage.company.taxId")}</Label>
               <Input
                 id="taxId"
                 value={form["company.taxId"]}
@@ -182,7 +184,7 @@ export default function CompanySettingsPage() {
               />
             </div>
             <div className="space-y-2 sm:col-span-2">
-              <Label htmlFor="logo">Logo URL</Label>
+              <Label htmlFor="logo">{t("settingsPage.company.logoUrl")}</Label>
               <Input
                 id="logo"
                 value={form["company.logo"]}
@@ -191,7 +193,7 @@ export default function CompanySettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="currency">Currency</Label>
+              <Label htmlFor="currency">{t("settings.currency")}</Label>
               <Input
                 id="currency"
                 value={form["company.currency"]}
@@ -200,7 +202,7 @@ export default function CompanySettingsPage() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="timezone">Timezone</Label>
+              <Label htmlFor="timezone">{t("settings.timezone")}</Label>
               <Input
                 id="timezone"
                 value={form["company.timezone"]}
@@ -210,12 +212,12 @@ export default function CompanySettingsPage() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="address">Address</Label>
+            <Label htmlFor="address">{t("settingsPage.company.address")}</Label>
             <Input
               id="address"
               value={form["company.address"]}
               onChange={(e) => updateField("company.address", e.target.value)}
-              placeholder="123 Main St, City, Country"
+              placeholder={t("settingsPage.company.phAddress")}
             />
           </div>
         </CardContent>

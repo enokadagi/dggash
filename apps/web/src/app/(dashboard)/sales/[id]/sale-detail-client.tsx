@@ -21,28 +21,30 @@ import {
 } from "@/components/ui/table";
 import { InvoicePrintButton } from "@/components/invoice/invoice-print-button";
 import { ReceiptPrintButton } from "@/components/printer/receipt-print-button";
+import { useLocalization } from "@/hooks/use-localization";
 import { ArrowLeft, RotateCcw, XCircle, User, CreditCard, FileText, MessageCircle } from "lucide-react";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import { openWhatsAppWeb, buildSaleReceiptText } from "@/lib/whatsapp-link";
 
 export function SaleDetailClient({ id }: { id: string }) {
   const router = useRouter();
+  const { t } = useLocalization();
   const { data: sale, isLoading, isError } = useSale(id);
   const refundMutation = useRefundSale();
   const cancelMutation = useCancelSale();
   const [confirm, setConfirm] = React.useState<null | "refund" | "cancel">(null);
 
-  if (isLoading) return <LoadingState message="Loading sale..." />;
+  if (isLoading) return <LoadingState message={t("salesPages.loadingSale")} />;
 
   if (isError || !sale) {
     return (
       <div className="space-y-4">
-        <ErrorState message="Sale not found — it may have been removed or the link is incorrect." />
+        <ErrorState message={t("salesPages.saleNotFound")} />
         <div className="flex justify-center">
           <Button asChild variant="outline">
             <Link href="/sales">
               <ArrowLeft className="me-2 h-4 w-4" />
-              Back to Sales
+              {t("salesPages.backToSales")}
             </Link>
           </Button>
         </div>
@@ -57,13 +59,13 @@ export function SaleDetailClient({ id }: { id: string }) {
     <div className="space-y-6">
       <PageHeader
         title={sale.saleNumber}
-        description={`Completed ${formatDateTime(sale.createdAt)}`}
+        description={t("salesPages.completedAt", { date: formatDateTime(sale.createdAt) })}
         actions={
           <>
             <Button asChild variant="outline">
               <Link href="/sales">
                 <ArrowLeft className="me-2 h-4 w-4" />
-                Back
+                {t("salesPages.back")}
               </Link>
             </Button>
             <InvoicePrintButton sale={sale as any} />
@@ -83,23 +85,23 @@ export function SaleDetailClient({ id }: { id: string }) {
               }}
             >
               <MessageCircle className="me-2 h-4 w-4 text-green-600" />
-              WhatsApp Receipt
+              {t("salesPages.whatsappReceipt")}
             </Button>
             <Button asChild variant="outline">
               <Link href={`/sales/invoice?id=${encodeURIComponent(sale.id)}`}>
                 <FileText className="me-2 h-4 w-4" />
-                Preview Invoice
+                {t("salesPages.previewInvoice")}
               </Link>
             </Button>
             {sale.status === "COMPLETED" && (
               <>
                 <Button variant="outline" onClick={() => setConfirm("refund")}>
                   <RotateCcw className="me-2 h-4 w-4" />
-                  Refund
+                  {t("salesPages.refund")}
                 </Button>
                 <Button variant="destructive" onClick={() => setConfirm("cancel")}>
                   <XCircle className="me-2 h-4 w-4" />
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
               </>
             )}
@@ -112,20 +114,20 @@ export function SaleDetailClient({ id }: { id: string }) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <CreditCard className="h-4 w-4" />
-              Payment
+              {t("salesPages.payment")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Status</span>
+              <span className="text-muted-foreground">{t("salesPages.status")}</span>
               <StatusBadge status={sale.status} />
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Method</span>
+              <span className="text-muted-foreground">{t("salesPages.method")}</span>
               <span className="capitalize">{sale.paymentMethod.replace(/_/g, " ")}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Total</span>
+              <span className="text-muted-foreground">{t("salesPages.total")}</span>
               <span className="text-lg font-bold">
                 {formatCurrency(Number(sale.totalAmount), sale.currency)}
               </span>
@@ -137,7 +139,7 @@ export function SaleDetailClient({ id }: { id: string }) {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
               <User className="h-4 w-4" />
-              Customer
+              {t("salesPages.customer")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
@@ -149,11 +151,11 @@ export function SaleDetailClient({ id }: { id: string }) {
                 <p className="text-muted-foreground">{customer.phone}</p>
               </>
             ) : (
-              <p className="text-muted-foreground">Walk-in customer</p>
+              <p className="text-muted-foreground">{t("salesPages.walkIn")}</p>
             )}
             {sale.user && (
               <p className="pt-2 text-xs text-muted-foreground">
-                Sold by {sale.user.firstName} {sale.user.lastName}
+                {t("salesPages.soldBy", { name: `${sale.user.firstName} ${sale.user.lastName}` })}
               </p>
             )}
           </CardContent>
@@ -161,24 +163,24 @@ export function SaleDetailClient({ id }: { id: string }) {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Summary</CardTitle>
+            <CardTitle className="text-base">{t("salesPages.summary")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Line items</span>
+              <span className="text-muted-foreground">{t("salesPages.lineItems")}</span>
               <span>{sale.items.length}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Units sold</span>
+              <span className="text-muted-foreground">{t("salesPages.unitsSold")}</span>
               <span>{itemCount}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Currency</span>
+              <span className="text-muted-foreground">{t("salesPages.currency")}</span>
               <span>{sale.currency}</span>
             </div>
             {sale.notes && (
               <p className="pt-2 text-xs text-muted-foreground">
-                Note: {sale.notes}
+                {t("salesPages.note", { note: sale.notes })}
               </p>
             )}
           </CardContent>
@@ -187,17 +189,17 @@ export function SaleDetailClient({ id }: { id: string }) {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Line Items</CardTitle>
+          <CardTitle className="text-base">{t("salesPages.lineItemsTable")}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Product</TableHead>
-                <TableHead className="text-end">SKU</TableHead>
-                <TableHead className="text-end">Unit Price</TableHead>
-                <TableHead className="text-end">Qty</TableHead>
-                <TableHead className="text-end">Total</TableHead>
+                <TableHead>{t("salesPages.product")}</TableHead>
+                <TableHead className="text-end">{t("salesPages.sku")}</TableHead>
+                <TableHead className="text-end">{t("salesPages.unitPrice")}</TableHead>
+                <TableHead className="text-end">{t("salesPages.qty")}</TableHead>
+                <TableHead className="text-end">{t("salesPages.total")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -220,7 +222,7 @@ export function SaleDetailClient({ id }: { id: string }) {
             <TableFooter>
               <TableRow>
                 <TableCell colSpan={4} className="text-end font-semibold">
-                  Grand Total
+                  {t("salesPages.grandTotal")}
                 </TableCell>
                 <TableCell className="text-end font-bold tabular-nums">
                   {formatCurrency(Number(sale.totalAmount), sale.currency)}
@@ -234,9 +236,13 @@ export function SaleDetailClient({ id }: { id: string }) {
       <ConfirmDialog
         open={!!confirm}
         onOpenChange={(open) => !open && setConfirm(null)}
-        title={confirm === "cancel" ? "Cancel this sale?" : "Refund this sale?"}
-        description={`This will restore stock for ${sale.saleNumber} (${formatCurrency(Number(sale.totalAmount), sale.currency)}) and mark it as ${confirm === "cancel" ? "CANCELLED" : "REFUNDED"}.`}
-        confirmLabel={confirm === "cancel" ? "Cancel sale" : "Refund sale"}
+        title={confirm === "cancel" ? t("salesPages.confirm.cancelTitle") : t("salesPages.confirm.refundTitle")}
+        description={t("salesPages.confirm.restoreStock", {
+          sale: sale.saleNumber,
+          amount: formatCurrency(Number(sale.totalAmount), sale.currency),
+          status: confirm === "cancel" ? t("sales.cancelled") : t("sales.refunded"),
+        })}
+        confirmLabel={confirm === "cancel" ? t("salesPages.confirm.cancelSale") : t("salesPages.confirm.refundSale")}
         onConfirm={() => {
           if (confirm === "cancel") cancelMutation.mutate({ id: sale.id });
           else refundMutation.mutate({ id: sale.id });

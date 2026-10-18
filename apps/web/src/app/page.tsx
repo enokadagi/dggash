@@ -1,20 +1,32 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuthStore } from "@/stores/auth-store";
+import { useAuthStore, readStoredIsAuthenticated } from "@/stores/auth-store";
 
 export default function HomePage() {
   const router = useRouter();
-  const { isAuthenticated } = useAuthStore();
+  const storeAuth = useAuthStore((state) => state.isAuthenticated);
+  const [ready, setReady] = useState(false);
+  const [storedAuth, setStoredAuth] = useState(false);
 
   useEffect(() => {
+    setStoredAuth(readStoredIsAuthenticated());
+    setReady(true);
+  }, []);
+
+  // Combine the (async-rehydrating) store value with a synchronous storage read
+  // so a hard load doesn't route a logged-in user to /login before hydration.
+  const isAuthenticated = storeAuth || storedAuth;
+
+  useEffect(() => {
+    if (!ready) return;
     if (isAuthenticated) {
       router.replace("/sales/pos");
     } else {
       router.replace("/login");
     }
-  }, [isAuthenticated, router]);
+  }, [ready, isAuthenticated, router]);
 
   return (
     <div className="flex h-screen items-center justify-center">

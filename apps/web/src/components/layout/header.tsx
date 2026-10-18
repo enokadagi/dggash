@@ -16,8 +16,9 @@ import {
 import { useTheme } from "next-themes";
 import { useAuthStore } from "@/stores/auth-store";
 import { useUIStore } from "@/stores/ui-store";
+import { useLocalization } from "@/hooks/use-localization";
+import { useCompanyProfile } from "@/hooks/api/use-company-settings";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -36,35 +37,30 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Breadcrumb } from "@/components/ui/breadcrumb";
+import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { getInitials } from "@/lib/utils";
 
-function generateBreadcrumbs(pathname: string) {
-  const segments = pathname.split("/").filter(Boolean);
-  const crumbs: Array<{ label: string; href?: string }> = [];
-  let path = "";
-
-  const labelMap: Record<string, string> = {
-    dashboard: "Dashboard",
-    sales: "Sales",
-    pos: "Point of Sale",
-    inventory: "Inventory",
-    whatsapp: "WhatsApp",
-    templates: "Templates",
-    messages: "Messages",
-    settings: "Settings",
-    profile: "Profile",
-  };
-
-  segments.forEach((segment, index) => {
-    path += `/${segment}`;
-    crumbs.push({
-      label: labelMap[segment] || segment,
-      href: index < segments.length - 1 ? path : undefined,
-    });
-  });
-
-  return crumbs;
-}
+const segmentKeyMap: Record<string, string> = {
+  dashboard: "nav.dashboard",
+  sales: "nav.sales",
+  pos: "nav.pos",
+  customers: "nav.customers",
+  plans: "nav.plans",
+  subscriptions: "nav.subscriptions",
+  inventory: "nav.inventory",
+  movements: "nav.stockMovements",
+  reports: "nav.reports",
+  revenue: "nav.revenue",
+  whatsapp: "nav.whatsapp",
+  connect: "nav.connectionSetup",
+  templates: "nav.templates",
+  messages: "nav.messages",
+  reminders: "nav.expiryNotifications",
+  employees: "nav.employees",
+  settings: "nav.settings",
+  profile: "nav.profile",
+  company: "settings.company",
+};
 
 export function Header() {
   const pathname = usePathname();
@@ -72,6 +68,8 @@ export function Header() {
   const { user, logout } = useAuthStore();
   const { toggleSidebar } = useUIStore();
   const { theme, setTheme } = useTheme();
+  const { t, isRTL } = useLocalization();
+  const { data: company } = useCompanyProfile();
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState("");
 
@@ -80,15 +78,28 @@ export function Header() {
     router.push("/login");
   };
 
-  const breadcrumbs = generateBreadcrumbs(pathname);
+  const breadcrumbs = React.useMemo(() => {
+    const segments = pathname.split("/").filter(Boolean);
+    const crumbs: Array<{ label: string; href?: string }> = [];
+    let path = "";
+    segments.forEach((segment, index) => {
+      path += `/${segment}`;
+      const key = segmentKeyMap[segment];
+      crumbs.push({
+        label: key ? t(key) : segment,
+        href: index < segments.length - 1 ? path : undefined,
+      });
+    });
+    return crumbs;
+  }, [pathname, t]);
 
   const quickLinks = [
-    { label: "Point of Sale", href: "/sales/pos", group: "Sales" },
-    { label: "Sales History", href: "/sales", group: "Sales" },
-    { label: "Inventory", href: "/inventory", group: "Operations" },
-    { label: "WhatsApp Messages", href: "/whatsapp/messages", group: "WhatsApp" },
-    { label: "WhatsApp Templates", href: "/whatsapp/templates", group: "WhatsApp" },
-    { label: "Settings", href: "/settings/company", group: "System" },
+    { label: t("nav.pos"), href: "/sales/pos" },
+    { label: t("nav.salesHistory"), href: "/sales" },
+    { label: t("nav.inventory"), href: "/inventory" },
+    { label: t("nav.messages"), href: "/whatsapp/messages" },
+    { label: t("nav.templates"), href: "/whatsapp/templates" },
+    { label: t("settings.company"), href: "/settings/company" },
   ];
 
   const filteredLinks = searchQuery
@@ -103,10 +114,18 @@ export function Header() {
           size="icon"
           className="md:hidden"
           onClick={toggleSidebar}
-          aria-label="Toggle menu"
+          aria-label={t("common.appName")}
         >
           <Menu className="h-5 w-5" />
         </Button>
+
+        {company?.logo ? (
+          <img
+            src={company.logo}
+            alt={company.name || t("common.appName")}
+            className="h-8 w-8 shrink-0 rounded object-contain md:hidden"
+          />
+        ) : null}
 
         <div className="flex-1">
           {breadcrumbs.length > 0 && (
@@ -120,16 +139,18 @@ export function Header() {
             size="icon"
             className="hidden sm:flex"
             onClick={() => setSearchOpen(true)}
-            aria-label="Search"
+            aria-label={t("common.search")}
           >
             <Search className="h-5 w-5" />
           </Button>
+
+          <LanguageSwitcher />
 
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            aria-label="Toggle theme"
+            aria-label={t("profile.appearance")}
           >
             <Sun className="h-5 w-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
             <Moon className="absolute h-5 w-5 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
@@ -150,7 +171,7 @@ export function Header() {
                 <ChevronDown className="h-3 w-3 opacity-50" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuContent align={isRTL ? "start" : "end"} className="w-56">
               <DropdownMenuLabel>
                 <div className="flex flex-col space-y-1">
                   <p className="text-sm font-medium">{user?.firstName} {user?.lastName}</p>
@@ -160,17 +181,19 @@ export function Header() {
               <DropdownMenuSeparator />
               <DropdownMenuItem asChild>
                 <Link href="/settings/profile" className="flex items-center gap-2">
-                  <User className="h-4 w-4" /> Profile
+                  <User className="h-4 w-4" /> {t("nav.profile")}
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link href="/settings/company" className="flex items-center gap-2">
-                  <Settings className="h-4 w-4" /> Settings
-                </Link>
-              </DropdownMenuItem>
+              {user?.role === "ADMIN" ? (
+                <DropdownMenuItem asChild>
+                  <Link href="/settings/company" className="flex items-center gap-2">
+                    <Settings className="h-4 w-4" /> {t("nav.settings")}
+                  </Link>
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleLogout} className="flex items-center gap-2 text-destructive">
-                <LogOut className="h-4 w-4" /> Log out
+                <LogOut className="h-4 w-4" /> {t("auth.logout")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -179,13 +202,13 @@ export function Header() {
 
       <CommandDialog open={searchOpen} onOpenChange={setSearchOpen}>
         <CommandInput
-          placeholder="Search pages..."
+          placeholder={t("nav.searchPlaceholder")}
           value={searchQuery}
           onValueChange={setSearchQuery}
         />
         <CommandList>
-          <CommandEmpty>No results found.</CommandEmpty>
-          <CommandGroup heading="Pages">
+          <CommandEmpty>{t("common.noData")}</CommandEmpty>
+          <CommandGroup heading={t("nav.main")}>
             {filteredLinks.map((link) => (
               <CommandItem
                 key={link.href}

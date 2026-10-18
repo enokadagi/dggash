@@ -149,16 +149,16 @@ function SubscriptionsContent() {
 
   const rowActions = (row: typeof subscriptions[number]): RowAction[] => {
     const actions: RowAction[] = [
-      { label: "Edit", onClick: () => openEdit(row), icon: <Pencil className="h-4 w-4" /> },
+      { label: t("common.edit"), onClick: () => openEdit(row), icon: <Pencil className="h-4 w-4" /> },
     ];
     if (row.status === "ACTIVE") {
-      actions.push({ label: "Renew", onClick: () => renewMutation.mutate(row.id), icon: <RefreshCw className="h-4 w-4" /> });
-      actions.push({ label: "Suspend", onClick: () => suspendMutation.mutate(row.id), icon: <PauseCircle className="h-4 w-4" /> });
+      actions.push({ label: t("subscriptionsPage.renew"), onClick: () => renewMutation.mutate(row.id), icon: <RefreshCw className="h-4 w-4" /> });
+      actions.push({ label: t("subscriptions.suspend"), onClick: () => suspendMutation.mutate(row.id), icon: <PauseCircle className="h-4 w-4" /> });
     }
     if (row.status === "SUSPENDED") {
-      actions.push({ label: "Reactivate", onClick: () => reactivateMutation.mutate(row.id), icon: <PlayCircle className="h-4 w-4" /> });
+      actions.push({ label: t("subscriptions.reactivate"), onClick: () => reactivateMutation.mutate(row.id), icon: <PlayCircle className="h-4 w-4" /> });
     }
-    actions.push({ label: "Cancel", onClick: () => setCancelling(row), icon: <Ban className="h-4 w-4" />, destructive: true });
+    actions.push({ label: t("common.cancel"), onClick: () => setCancelling(row), icon: <Ban className="h-4 w-4" />, destructive: true });
     return actions;
   };
 
@@ -166,11 +166,11 @@ function SubscriptionsContent() {
     <div className="space-y-6">
       <PageHeader title={t("subscriptions.title")} />
       {isLoading ? (
-        <LoadingState message={t("common.loading") || "Loading subscriptions..."} />
+        <LoadingState message={t("subscriptionsPage.loading")} />
       ) : error ? (
-        <ErrorState message={t("common.error") || "Failed to load subscriptions"} onRetry={() => refetch()} />
+        <ErrorState message={t("subscriptionsPage.loadError")} onRetry={() => refetch()} />
       ) : subscriptions.length === 0 ? (
-        <EmptyState message={t("subscriptions.noSubscriptions") || "No subscriptions found"} />
+        <EmptyState message={t("subscriptionsPage.empty")} />
       ) : (
       <DataTable
         columns={columns}
@@ -188,16 +188,16 @@ function SubscriptionsContent() {
       <Dialog open={!!editing} onOpenChange={(open) => { if (!open) setEditing(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Edit Subscription</DialogTitle>
+            <DialogTitle>{t("subscriptions.editSubscription")}</DialogTitle>
             <DialogDescription>
-              Update the plan, dates, payment status, or notes for this subscription.
+              {t("subscriptionsPage.editDescription")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="sub-plan">Plan</Label>
+              <Label htmlFor="sub-plan">{t("subscriptions.plan")}</Label>
               <Select value={editForm.planId} onValueChange={(v) => setEditForm({ ...editForm, planId: v })}>
-                <SelectTrigger id="sub-plan"><SelectValue placeholder="Select a plan" /></SelectTrigger>
+                <SelectTrigger id="sub-plan"><SelectValue placeholder={t("subscriptionsPage.selectPlan")} /></SelectTrigger>
                 <SelectContent>
                   {plans.map((plan) => <SelectItem key={plan.id} value={plan.id}>{plan.name}</SelectItem>)}
                 </SelectContent>
@@ -205,32 +205,40 @@ function SubscriptionsContent() {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="sub-start">Start date</Label>
+                <Label htmlFor="sub-start">{t("subscriptions.startDate")}</Label>
                 <Input id="sub-start" type="date" value={editForm.startDate} onChange={(e) => setEditForm({ ...editForm, startDate: e.target.value })} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="sub-expiry">Expiry date</Label>
+                <Label htmlFor="sub-expiry">{t("subscriptionsPage.expiryDate")}</Label>
                 <Input id="sub-expiry" type="date" value={editForm.expiryDate} onChange={(e) => setEditForm({ ...editForm, expiryDate: e.target.value })} />
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="sub-payment">Payment status</Label>
+              <Label htmlFor="sub-payment">{t("subscriptionsPage.paymentStatus")}</Label>
               <Select value={editForm.paymentStatus} onValueChange={(v) => setEditForm({ ...editForm, paymentStatus: v })}>
-                <SelectTrigger id="sub-payment"><SelectValue placeholder="Select payment status" /></SelectTrigger>
+                <SelectTrigger id="sub-payment"><SelectValue placeholder={t("subscriptionsPage.selectPaymentStatus")} /></SelectTrigger>
                 <SelectContent>
-                  {PAYMENT_OPTIONS.map((p) => <SelectItem key={p} value={p}>{p.replace("_", " ")}</SelectItem>)}
+                  {PAYMENT_OPTIONS.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {p === "paid"
+                        ? t("customersPages.paymentStatus.paid")
+                        : p === "pending"
+                          ? t("customersPages.paymentStatus.pending")
+                          : t("customersPages.paymentStatus.partiallyPaid")}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="sub-notes">Notes</Label>
+              <Label htmlFor="sub-notes">{t("customers.notes")}</Label>
               <Textarea id="sub-notes" rows={3} value={editForm.notes} onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })} />
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => setEditing(null)}>{t("common.cancel")}</Button>
             <Button onClick={saveEdit} disabled={updateMutation.isPending}>
-              {updateMutation.isPending ? "Saving..." : "Save Changes"}
+              {updateMutation.isPending ? t("subscriptionsPage.saving") : t("subscriptionsPage.saveChanges")}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -239,9 +247,13 @@ function SubscriptionsContent() {
       <ConfirmDialog
         open={!!cancelling}
         onOpenChange={() => setCancelling(null)}
-        title="Cancel subscription"
-        description={`This will cancel the subscription for ${cancelling?.customer ? `${cancelling.customer.firstName} ${cancelling.customer.lastName}` : "this customer"}. You can create a new subscription later if needed.`}
-        confirmLabel="Cancel subscription"
+        title={t("subscriptionsPage.cancelTitle")}
+        description={t("subscriptionsPage.cancelDescription", {
+          name: cancelling?.customer
+            ? `${cancelling.customer.firstName} ${cancelling.customer.lastName}`
+            : t("subscriptionsPage.thisCustomer"),
+        })}
+        confirmLabel={t("subscriptionsPage.confirmCancel")}
         destructive
         onConfirm={() => {
           if (cancelling) {
@@ -255,8 +267,9 @@ function SubscriptionsContent() {
 }
 
 export default function SubscriptionsPage() {
+  const { t } = useLocalization();
   return (
-    <Suspense fallback={<LoadingState message="Loading subscriptions..." />}>
+    <Suspense fallback={<LoadingState message={t("subscriptionsPage.loading")} />}>
       <SubscriptionsContent />
     </Suspense>
   );

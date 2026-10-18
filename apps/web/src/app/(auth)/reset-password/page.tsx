@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { useLocalization } from "@/hooks/use-localization";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,7 @@ import {
 } from "@/components/ui/card";
 
 export default function ResetPasswordPage() {
+  const { t } = useLocalization();
   const [token, setToken] = React.useState("");
   const [newPassword, setNewPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
@@ -40,7 +42,7 @@ export default function ResetPasswordPage() {
       setComplete(true);
     } catch (err: unknown) {
       const apiError = err as { message?: string };
-      setError(apiError.message ?? "This recovery link is invalid or expired.");
+      setError(apiError.message ?? t("authPages.reset.invalidLink"));
     } finally {
       setIsLoading(false);
     }
@@ -49,27 +51,27 @@ export default function ResetPasswordPage() {
   return (
     <Card className="w-full">
       <CardHeader className="space-y-1">
-        <CardTitle className="text-2xl font-bold">Choose a new password</CardTitle>
+        <CardTitle className="text-2xl font-bold">{t("authPages.reset.title")}</CardTitle>
         <CardDescription>
-          Recovery links expire after 30 minutes and can only be used once.
+          {t("authPages.reset.description")}
         </CardDescription>
       </CardHeader>
       <form onSubmit={onSubmit}>
         <CardContent className="space-y-4">
           {complete ? (
             <p role="status" className="rounded-md bg-muted p-3 text-sm">
-              Password reset successfully. Sign in with your new password.
+              {t("authPages.reset.success")}
             </p>
           ) : (
             <>
               {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
               {!token && (
                 <p role="alert" className="text-sm text-destructive">
-                  This recovery link is missing its token.
+                  {t("authPages.reset.missingToken")}
                 </p>
               )}
               <div className="space-y-2">
-                <Label htmlFor="new-password">New password</Label>
+                <Label htmlFor="new-password">{t("profile.newPassword")}</Label>
                 <Input
                   id="new-password"
                   type="password"
@@ -82,7 +84,7 @@ export default function ResetPasswordPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="confirm-password">Confirm new password</Label>
+                <Label htmlFor="confirm-password">{t("profile.confirmNewPassword")}</Label>
                 <Input
                   id="confirm-password"
                   type="password"
@@ -100,11 +102,11 @@ export default function ResetPasswordPage() {
         <CardFooter className="flex flex-col gap-4">
           {!complete && (
             <Button type="submit" className="w-full" disabled={isLoading || !token}>
-              {isLoading ? "Saving…" : "Reset password"}
+              {isLoading ? t("authPages.reset.saving") : t("authPages.reset.resetPassword")}
             </Button>
           )}
           <Link className="text-sm text-primary underline-offset-4 hover:underline" href="/login/">
-            Back to sign in
+            {t("authPages.backToSignIn")}
           </Link>
         </CardFooter>
       </form>

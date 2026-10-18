@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { DataTable } from "@/components/ui/data-table";
 import { api } from "@/lib/api";
+import { useLocalization } from "@/hooks/use-localization";
 import { formatCurrency, formatNumber } from "@/lib/utils";
 import { Users, UserPlus, UserMinus, Activity, DollarSign } from "lucide-react";
 
@@ -42,45 +43,54 @@ interface FinancialOverview {
   revenueGrowth: number;
 }
 
-const growthColumns: ColumnDef<MonthlyRecord>[] = [
-  {
-    accessorKey: "month",
-    header: "Month",
-    cell: ({ row }) => <span className="font-medium">{row.original.month}</span>,
-  },
-  {
-    accessorKey: "newCustomers",
-    header: "New Customers",
-    cell: ({ row }) => (
-      <div className="flex items-center gap-1">
-        <UserPlus className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
-        {row.original.newCustomers}
-      </div>
-    ),
-  },
-  {
-    accessorKey: "churned",
-    header: "Churned",
-    cell: ({ row }) => (
-      <div className="flex items-center gap-1">
-        <UserMinus className="h-4 w-4 text-destructive" />
-        {row.original.churned}
-      </div>
-    ),
-  },
-  {
-    accessorKey: "active",
-    header: "Active",
-    cell: ({ row }) => formatNumber(row.original.active),
-  },
-  {
-    accessorKey: "mrr",
-    header: "MRR",
-    cell: ({ row }) => formatCurrency(row.original.mrr),
-  },
-];
+function useGrowthColumns(): ColumnDef<MonthlyRecord>[] {
+  const { t } = useLocalization();
+
+  return React.useMemo(
+    () => [
+      {
+        accessorKey: "month",
+        header: t("reportsPages.customers.month"),
+        cell: ({ row }) => <span className="font-medium">{row.original.month}</span>,
+      },
+      {
+        accessorKey: "newCustomers",
+        header: t("reportsPages.customers.newCustomers"),
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1">
+            <UserPlus className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
+            {row.original.newCustomers}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "churned",
+        header: t("reportsPages.customers.churned"),
+        cell: ({ row }) => (
+          <div className="flex items-center gap-1">
+            <UserMinus className="h-4 w-4 text-destructive" />
+            {row.original.churned}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "active",
+        header: t("reportsPages.customers.activeCol"),
+        cell: ({ row }) => formatNumber(row.original.active),
+      },
+      {
+        accessorKey: "mrr",
+        header: t("reportsPages.customers.mrrCol"),
+        cell: ({ row }) => formatCurrency(row.original.mrr),
+      },
+    ],
+    [t]
+  );
+}
 
 export default function CustomersReportPage() {
+  const { t } = useLocalization();
+  const growthColumns = useGrowthColumns();
   const { data: report, isLoading: reportLoading, error: reportError, refetch: refetchReport } = useQuery({
     queryKey: ["customers-report"],
     queryFn: () => api.get<CustomersReport>("/reports/customers"),
@@ -114,9 +124,9 @@ export default function CustomersReportPage() {
       .sort((a, b) => a.month.localeCompare(b.month));
   }, [report, financial]);
 
-  if (isLoading) return <LoadingState message="Loading customer analytics..." />;
-  if (error) return <ErrorState message={(error as { message?: string })?.message || "Failed to load customer report"} onRetry={() => { refetchReport(); refetchFinancial(); }} />;
-  if (!report) return <EmptyState message="No customer data available" />;
+  if (isLoading) return <LoadingState message={t("reportsPages.customers.loading")} />;
+  if (error) return <ErrorState message={(error as { message?: string })?.message || t("reportsPages.customers.loadError")} onRetry={() => { refetchReport(); refetchFinancial(); }} />;
+  if (!report) return <EmptyState message={t("reportsPages.customers.noData")} />;
 
   const activeCount = report.byStatus.find((s) => s.status.toUpperCase() === "ACTIVE")?.count || 0;
   const suspendedCount = report.byStatus.find((s) => s.status.toUpperCase() === "SUSPENDED")?.count || 0;
@@ -126,46 +136,46 @@ export default function CustomersReportPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Customer Analytics" description="Customer growth and analytics report" />
+      <PageHeader title={t("reportsPages.customers.title")} description={t("reportsPages.customers.description")} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("reportsPages.customers.totalCustomers")}</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatNumber(report.summary.totalCustomers)}</div>
-            <p className="text-xs text-muted-foreground">All customers</p>
+            <p className="text-xs text-muted-foreground">{t("reportsPages.customers.allCustomers")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Active</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("reportsPages.customers.active")}</CardTitle>
             <Activity className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{formatNumber(activeCount)}</div>
-            <p className="text-xs text-muted-foreground">Active customers</p>
+            <p className="text-xs text-muted-foreground">{t("reportsPages.customers.activeCustomers")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Suspended</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("reportsPages.customers.suspended")}</CardTitle>
             <UserMinus className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-destructive">{formatNumber(suspendedCount)}</div>
-            <p className="text-xs text-muted-foreground">Suspended accounts</p>
+            <p className="text-xs text-muted-foreground">{t("reportsPages.customers.suspendedAccounts")}</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Churn Rate</CardTitle>
+            <CardTitle className="text-sm font-medium">{t("reportsPages.customers.churnRate")}</CardTitle>
             <UserMinus className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{churnRate}%</div>
-            <p className="text-xs text-muted-foreground">30-day churn rate</p>
+            <p className="text-xs text-muted-foreground">{t("reportsPages.customers.churn30")}</p>
           </CardContent>
         </Card>
       </div>
@@ -173,19 +183,19 @@ export default function CustomersReportPage() {
         <div className="grid gap-4 sm:grid-cols-2">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Monthly Recurring Revenue</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("reportsPages.customers.mrr")}</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(financial.mrr)}</div>
               <p className="text-xs text-muted-foreground">
-                {financial.revenueGrowth >= 0 ? "+" : ""}{financial.revenueGrowth}% growth
+                {t("reportsPages.customers.growth", { value: financial.revenueGrowth })}
               </p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Status Breakdown</CardTitle>
+              <CardTitle className="text-sm font-medium">{t("reportsPages.customers.statusBreakdown")}</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
@@ -202,11 +212,11 @@ export default function CustomersReportPage() {
       )}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Customer Growth Trend</CardTitle>
+          <CardTitle className="text-base">{t("reportsPages.customers.growthTrend")}</CardTitle>
         </CardHeader>
         <CardContent>
           {monthlyData.length === 0 ? (
-            <EmptyState message="No growth data available yet" />
+            <EmptyState message={t("reportsPages.customers.noGrowth")} />
           ) : (
             <DataTable columns={growthColumns} data={monthlyData} />
           )}
