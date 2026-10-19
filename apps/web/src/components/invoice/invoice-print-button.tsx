@@ -17,6 +17,10 @@ interface InvoicePrintButtonProps {
   variant?: "default" | "outline" | "ghost" | "secondary";
   size?: "sm" | "default" | "lg" | "icon";
   label?: string;
+  /** Opens the print dialog automatically once (e.g. right after checkout). */
+  autoPrint?: boolean;
+  /** Called once the print document has been dismissed. */
+  onPrinted?: () => void;
 }
 
 /** Waits for every <img> in the sheet to settle so the logo is not missing. */
@@ -52,12 +56,15 @@ export function InvoicePrintButton({
   variant = "outline",
   size = "default",
   label = "Print A4 Invoice",
+  autoPrint = false,
+  onPrinted,
 }: InvoicePrintButtonProps) {
   const [open, setOpen] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
   const company = useCompanyProfile();
   const print = usePrintSettings();
   const cleanupRef = React.useRef<number | null>(null);
+  const autoPrintRef = React.useRef(false);
 
   React.useEffect(() => {
     setMounted(true);
@@ -73,11 +80,19 @@ export function InvoicePrintButton({
   const finishPrint = React.useCallback(() => {
     delete document.body.dataset.printing;
     setOpen(false);
-  }, []);
+    onPrinted?.();
+  }, [onPrinted]);
 
-  const handlePrint = React.useCallback(async () => {
+  const handlePrint = React.useCallback(() => {
     setOpen(true);
   }, []);
+
+  // Auto-print once per sale (e.g. "Save and print" from the POS).
+  React.useEffect(() => {
+    if (!autoPrint || autoPrintRef.current) return;
+    autoPrintRef.current = true;
+    handlePrint();
+  }, [autoPrint, handlePrint]);
 
   // Runs once the invoice is actually in the DOM.
   React.useEffect(() => {

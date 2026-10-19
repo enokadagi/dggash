@@ -5,8 +5,15 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatDate(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
+function toValidDate(date: Date | string | null | undefined): Date | null {
+  if (!date) return null;
+  const d = date instanceof Date ? date : new Date(date);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export function formatDate(date: Date | string | null | undefined): string {
+  const d = toValidDate(date);
+  if (!d) return "—";
   return d.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
@@ -14,8 +21,9 @@ export function formatDate(date: Date | string): string {
   });
 }
 
-export function formatDateTime(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
+export function formatDateTime(date: Date | string | null | undefined): string {
+  const d = toValidDate(date);
+  if (!d) return "—";
   return d.toLocaleDateString("en-US", {
     year: "numeric",
     month: "short",
@@ -25,16 +33,30 @@ export function formatDateTime(date: Date | string): string {
   });
 }
 
-export function formatCurrency(amount: number, currency: string = "USD"): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-  }).format(amount);
+export function formatCurrency(
+  amount: number | string | null | undefined,
+  currency: string = "USD"
+): string {
+  const value = typeof amount === "number" ? amount : Number(amount);
+  const safeAmount = Number.isFinite(value) ? value : 0;
+  const safeCurrency =
+    typeof currency === "string" && /^[A-Za-z]{3}$/.test(currency.trim())
+      ? currency.trim().toUpperCase()
+      : "USD";
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: safeCurrency,
+      minimumFractionDigits: 2,
+    }).format(safeAmount);
+  } catch {
+    return `${safeCurrency} ${safeAmount.toFixed(2)}`;
+  }
 }
 
-export function formatNumber(num: number): string {
-  return new Intl.NumberFormat("en-US").format(num);
+export function formatNumber(num: number | string | null | undefined): string {
+  const value = typeof num === "number" ? num : Number(num);
+  return new Intl.NumberFormat("en-US").format(Number.isFinite(value) ? value : 0);
 }
 
 export function generateId(): string {
@@ -81,8 +103,9 @@ export function debounce<T extends (...args: unknown[]) => unknown>(
   };
 }
 
-export function getRelativeTime(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
+export function getRelativeTime(date: Date | string | null | undefined): string {
+  const d = toValidDate(date);
+  if (!d) return "—";
   const now = new Date();
   const diff = now.getTime() - d.getTime();
   const seconds = Math.floor(diff / 1000);

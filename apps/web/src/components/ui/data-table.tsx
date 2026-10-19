@@ -47,6 +47,7 @@ interface DataTableProps<TData, TValue> {
   onPageChange?: (page: number) => void;
   onSearch?: (value: string) => void;
   enableSelection?: boolean;
+  onSelectionChange?: (selectedRows: TData[]) => void;
   actions?: (row: TData) => Array<{ label: string; onClick: () => void; icon?: React.ReactNode; destructive?: boolean }>;
 }
 
@@ -61,6 +62,7 @@ export function DataTable<TData, TValue>({
   onPageChange,
   onSearch,
   enableSelection = false,
+  onSelectionChange,
   actions,
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
@@ -161,6 +163,12 @@ export function DataTable<TData, TValue>({
     }
     onSearch?.(value);
   };
+
+  const selectedRows = table.getSelectedRowModel().rows;
+  React.useEffect(() => {
+    onSelectionChange?.(selectedRows.map((row) => row.original));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowSelection, data]);
 
   return (
     <div className="w-full space-y-4">

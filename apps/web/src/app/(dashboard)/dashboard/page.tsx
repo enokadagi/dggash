@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import {
   ShoppingCart,
   ReceiptText,
@@ -11,10 +12,13 @@ import {
   Layers,
   ArrowRight,
   MessageCircle,
+  TrendingUp,
+  Wallet,
 } from "lucide-react";
 import { useLocalization } from "@/hooks/use-localization";
 import { useSales } from "@/hooks/api/use-sales";
 import { useInventorySummary, useProducts } from "@/hooks/api/use-products";
+import { api } from "@/lib/api";
 import { StatCard } from "@/components/ui/stat-card";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -28,12 +32,36 @@ export default function DashboardPage() {
   const { data: salesRes, isLoading: salesLoading } = useSales({ page: 1, limit: 50 });
   const { data: summary, isLoading: summaryLoading } = useInventorySummary();
   const { data: lowStockRes } = useProducts({ limit: 5, lowStock: "true" });
+  const { data: profit, isLoading: profitLoading } = useQuery({
+    queryKey: ["reports", "profit"],
+    queryFn: () =>
+      api.get<{
+        summary: {
+          revenue: number;
+          cogs: number;
+          grossProfit: number;
+          expenses: number;
+          netProfit: number;
+          netMargin: number;
+        };
+      }>("/reports/profit"),
+  });
+
+  const profitSummary = profit?.summary;
+  const netPositive = (profitSummary?.netProfit ?? 0) >= 0;
 
   const sales = salesRes?.data || [];
   const completed = sales.filter((s) => s.status === "COMPLETED");
-  const totalRevenue = completed.reduce((sum, s) => sum + Number(s.totalAmount), 0);
+  const totalRevenue = completed.reduce((sum, s) => {
+    const amount = Number(s.totalAmount);
+    return sum + (Number.isFinite(amount) ? amount : 0);
+  }, 0);
   const today = new Date().toISOString().slice(0, 10);
-  const todayCount = sales.filter((s) => s.createdAt.slice(0, 10) === today).length;
+  const todayCount = sales.filter((s) => {
+    const createdAt = s.createdAt ? new Date(s.createdAt) : null;
+    if (!createdAt || Number.isNaN(createdAt.getTime())) return false;
+    return createdAt.toISOString().slice(0, 10) === today;
+  }).length;
 
   return (
     <div className="space-y-6">
@@ -104,6 +132,60 @@ export default function DashboardPage() {
           </>
         )}
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">{t("dashboardPage.profitTitle")}</CardTitle>
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/reports/profit" className="flex items-center gap-1">
+              {t("dashboardPage.viewReport")} <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {profitLoading ? (
+            <div className="grid gap-4 sm:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-16 w-full" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <div className="flex items-center gap-3 rounded-lg border p-4">
+                <TrendingUp className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">{t("dashboardPage.grossProfitLabel")}</p>
+                  <p className="text-lg font-semibold tabular-nums">
+                    {formatCurrency(profitSummary?.grossProfit ?? 0)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-lg border p-4">
+                <Wallet className="h-5 w-5 text-muted-foreground" />
+                <div>
+                  <p className="text-xs text-muted-foreground">{t("dashboardPage.expensesLabel")}</p>
+                  <p className="text-lg font-semibold tabular-nums">
+                    {formatCurrency(profitSummary?.expenses ?? 0)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 rounded-lg border p-4">
+                <TrendingUp className={`h-5 w-5 ${netPositive ? "text-success" : "text-destructive"}`} />
+                <div>
+                  <p className="text-xs text-muted-foreground">{t("dashboardPage.netProfit")}</p>
+                  <p
+                    className={`text-lg font-semibold tabular-nums ${
+                      netPositive ? "text-success" : "text-destructive"
+                    }`}
+                  >
+                    {formatCurrency(profitSummary?.netProfit ?? 0)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

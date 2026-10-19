@@ -158,3 +158,64 @@ export function useCancelSale() {
     },
   });
 }
+
+export function useDeleteSale() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, restoreStock = true }: { id: string; restoreStock?: boolean }) =>
+      api.delete<{ id: string; saleNumber: string; restoreStock: boolean }>(
+        `/sales/${encodeURIComponent(id)}?restoreStock=${restoreStock ? "true" : "false"}`
+      ),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["inventory"] });
+      toast.success(`Sale ${res.saleNumber ?? ""} deleted`.trim());
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Delete failed");
+    },
+  });
+}
+
+export function useBulkDeleteSales() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, restoreStock = true }: { ids: string[]; restoreStock?: boolean }) =>
+      api.post<{ deletedCount: number; deleted: string[]; skipped: number }>("/sales/bulk-delete", {
+        ids,
+        restoreStock,
+      }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["inventory"] });
+      toast.success(`${res.deletedCount} sale(s) deleted`);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Bulk delete failed");
+    },
+  });
+}
+
+export function useClearSales() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      all?: boolean;
+      dateFrom?: string;
+      dateTo?: string;
+      status?: string;
+      restoreStock?: boolean;
+    }) => api.post<{ deletedCount: number }>("/sales/clear", { confirm: true, ...input }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["inventory"] });
+      toast.success(`${res.deletedCount} sale(s) cleared`);
+    },
+    onError: (err: any) => {
+      toast.error(err.message || "Clear failed");
+    },
+  });
+}

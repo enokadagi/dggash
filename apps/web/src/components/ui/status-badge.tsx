@@ -53,13 +53,14 @@ const statusBadgeVariants = cva(
 );
 
 interface StatusBadgeProps {
-  status: string;
+  status?: string | null;
   className?: string;
 }
 
 export function StatusBadge({ status, className }: StatusBadgeProps) {
   const { t } = useLocalization();
-  const normalized = status.toUpperCase();
+  const safeStatus = typeof status === "string" && status.trim() ? status.trim() : "unknown";
+  const normalized = safeStatus.toUpperCase();
   const key = normalized.toLowerCase().replace(/ /g, "_");
   const normalizedStatus = key as VariantProps<typeof statusBadgeVariants>["status"];
   
@@ -86,7 +87,7 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
     CLOSED: t("sharedComponents.statuses.closed"),
   };
   
-  const label = statusMap[normalized] || status.replace(/_/g, " ");
+  const label = statusMap[normalized] || safeStatus.replace(/_/g, " ");
   return (
     <span className={cn(statusBadgeVariants({ status: normalizedStatus }), className)}>
       {label}

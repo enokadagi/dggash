@@ -42,6 +42,8 @@ import {
   History,
   PlugZap,
   UserCog,
+  Wallet,
+  TrendingUp,
 } from "lucide-react";
 import { getInitials } from "@/lib/utils";
 
@@ -91,6 +93,7 @@ const navigation: NavGroup[] = [
     items: [
       { labelKey: "nav.inventory", href: "/inventory", icon: Package, adminOnly: true },
       { labelKey: "nav.stockMovements", href: "/inventory/movements", icon: History, adminOnly: true },
+      { labelKey: "nav.expenses", href: "/expenses", icon: Wallet, adminOnly: true },
     ],
   },
   {
@@ -102,6 +105,7 @@ const navigation: NavGroup[] = [
         adminOnly: true,
         children: [
           { labelKey: "nav.revenue", href: "/reports/revenue", icon: ChartColumn, adminOnly: true },
+          { labelKey: "nav.profit", href: "/reports/profit", icon: TrendingUp, adminOnly: true },
           { labelKey: "nav.customersReport", href: "/reports/customers", icon: Users, adminOnly: true },
           { labelKey: "nav.inventoryReport", href: "/reports/inventory", icon: Package, adminOnly: true },
         ],

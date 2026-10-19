@@ -5,13 +5,15 @@ import Link from "next/link";
 import { useProducts, useProductLookup, useCustomerSearch, type Product, type Customer } from "@/hooks/api/use-products";
 import { useCreateSale, type Sale } from "@/hooks/api/use-sales";
 import { useCreateCustomer } from "@/hooks/api/use-customers";
+import { useCompanyProfile } from "@/hooks/api/use-company-settings";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useWedgeScanner } from "@/hooks/use-wedge-scanner";
 import { useLocalization } from "@/hooks/use-localization";
 import { lookupProductByCode } from "@/lib/scanner/product-lookup";
 import { ReceiptPrintButton } from "@/components/printer/receipt-print-button";
 import { InvoicePrintButton } from "@/components/invoice/invoice-print-button";
-import type { InvoiceSale } from "@/components/invoice/a4-invoice";
+import { A4Invoice, type InvoiceSale } from "@/components/invoice/a4-invoice";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { ScannerStatus } from "@/components/scanner/scanner-status";
 import { BarcodeScanner } from "@/components/barcode/barcode-scanner";
 import { PageHeader } from "@/components/ui/page-header";
@@ -35,7 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import {
   ScanLine,
   ShoppingCart,
@@ -50,6 +52,10 @@ import {
   Layers,
   Camera,
   MessageCircle,
+  Maximize2,
+  Minimize2,
+  Printer,
+  Eraser,
 } from "lucide-react";
 import { openWhatsAppWeb, buildSaleReceiptText } from "@/lib/whatsapp-link";
 interface CartLine {
@@ -58,6 +64,62 @@ interface CartLine {
 }
 
 const PAYMENT_METHODS = ["cash", "card", "bank_transfer", "credit", "other"] as const;
+
+/**
+ * Editable quantity field. Keeps a local draft so multi-digit values can be
+ * typed freely, then commits a clamped integer on blur / Enter.
+ */
+function QuantityInput({
+  value,
+  max,
+  onChange,
+  ariaLabel,
+}: {
+  value: number;
+  max: number;
+  onChange: (next: number) => void;
+  ariaLabel: string;
+}) {
+  const [draft, setDraft] = React.useState(String(value));
+
+  React.useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const commit = () => {
+    const parsed = Number.parseInt(draft, 10);
+    if (!Number.isFinite(parsed)) {
+      setDraft(String(value));
+      return;
+    }
+    const clamped = Math.min(Math.max(parsed, 1), Math.max(max, 1));
+    onChange(parsed);
+    setDraft(String(clamped));
+  };
+
+  return (
+    <Input
+      type="number"
+      inputMode="numeric"
+      min={1}
+      max={Math.max(max, 1)}
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={commit}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          commit();
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      aria-label={ariaLabel}
+      className="h-8 w-16 text-center tabular-nums"
+    />
+  );
+}
+
+type PrintMode = "invoice" | "none";
 
 export default function PosPage() {
   const { t } = useLocalization();
@@ -85,6 +147,13 @@ export default function PosPage() {
     items: number;
     detail: Sale;
   }>(null);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const [checkoutOpen, setCheckoutOpen] = React.useState(false);
+  const [previewOpen, setPreviewOpen] = React.useState(false);
+  const [clearOpen, setClearOpen] = React.useState(false);
+  const [autoPrintInvoice, setAutoPrintInvoice] = React.useState(false);
+  const companyProfile = useCompanyProfile();
 
   const lookup = useProductLookup(debouncedQ);
   const quickProducts = useProducts({ limit: 12 });
@@ -101,6 +170,27 @@ export default function PosPage() {
       setCustomerQuery("");
     }
   }, [customerResults]);
+
+  React.useEffect(() => {
+    const onChange = () =>
+      setIsFullscreen(
+        typeof document !== "undefined" && document.fullscreenElement === containerRef.current
+      );
+    document.addEventListener("fullscreenchange", onChange);
+    return () => document.removeEventListener("fullscreenchange", onChange);
+  }, []);
+
+  const toggleFullscreen = React.useCallback(async () => {
+    try {
+      if (document.fullscreenElement) {
+        await document.exitFullscreen();
+      } else {
+        await containerRef.current?.requestFullscreen?.();
+      }
+    } catch {
+      // Fullscreen is optional; the POS keeps working without it.
+    }
+  }, []);
 
   const addToCart = React.useCallback((product: Product): boolean => {
     if (!product.isActive) {
@@ -142,19 +232,34 @@ export default function PosPage() {
   }, []);
 
   const setQty = (id: string, qty: number) => {
+    const line = cart.find((l) => l.product.id === id);
+    if (!line) return;
+    const max = Math.max(1, Math.floor(Number(line.product.currentStock) || 0));
+    const parsed = Number.isFinite(qty) ? Math.floor(qty) : 1;
+    const safeQty = Math.max(1, parsed);
+    if (safeQty > max) {
+      setScanMessage(t("pos.stockLimit", { count: max, name: line.product.name }));
+    }
     setCart((prev) =>
-      prev
-        .map((l) =>
-          l.product.id === id
-            ? { ...l, quantity: Math.min(Math.max(qty, 1), l.product.currentStock) }
-            : l
-        )
-        .filter((l) => l.quantity > 0)
+      prev.map((l) =>
+        l.product.id === id ? { ...l, quantity: Math.min(safeQty, max) } : l
+      )
     );
   };
 
   const removeLine = (id: string) => {
     setCart((prev) => prev.filter((l) => l.product.id !== id));
+  };
+
+  const clearCart = () => {
+    setCart([]);
+    setCustomer(null);
+    setCustomerQuery("");
+    setNotes("");
+    setScanMessage(null);
+    setLastScannedProduct(null);
+    checkoutLock.current = false;
+    setClearOpen(false);
   };
 
   const total = cart.reduce((sum, l) => sum + Number(l.product.sellingPrice) * l.quantity, 0);
@@ -229,11 +334,13 @@ export default function PosPage() {
     void addByCode(q);
   };
 
-  const checkout = () => {
+  const performCheckout = (mode: PrintMode) => {
     if (cart.length === 0) return;
     // Repeated clicks on "Complete Sale" must not create two sales.
     if (checkoutLock.current || createSale.isPending) return;
     checkoutLock.current = true;
+    setCheckoutOpen(false);
+    setPreviewOpen(false);
 
     createSale.mutate(
       {
@@ -254,6 +361,7 @@ export default function PosPage() {
             // success screen without another server round-trip.
             detail: resp.sale,
           });
+          setAutoPrintInvoice(mode === "invoice");
           setCart([]);
           setCustomer(null);
           setCustomerQuery("");
@@ -270,20 +378,79 @@ export default function PosPage() {
     );
   };
 
+  const openCheckout = () => {
+    if (cart.length === 0) return;
+    setCheckoutOpen(true);
+  };
+
+  const draftSale: InvoiceSale = React.useMemo(
+    () => ({
+      id: "draft",
+      saleNumber: "—",
+      totalAmount: total,
+      currency,
+      paymentMethod,
+      status: "DRAFT",
+      notes: notes.trim() || null,
+      createdAt: new Date().toISOString(),
+      customer: customer
+        ? {
+            firstName: customer.firstName,
+            lastName: customer.lastName,
+            phone: customer.phone,
+          }
+        : null,
+      items: cart.map((l, index) => ({
+        id: `draft-${l.product.id}-${index}`,
+        quantity: l.quantity,
+        unitPrice: Number(l.product.sellingPrice),
+        totalPrice: Number(l.product.sellingPrice) * l.quantity,
+        product: {
+          name: l.product.name,
+          sku: l.product.sku,
+          barcode: l.product.barcode,
+          unit: l.product.unit,
+        },
+      })),
+    }),
+    [total, currency, paymentMethod, notes, customer, cart]
+  );
+
   const resetAfterReceipt = () => {
     setLastReceipt(null);
+    setAutoPrintInvoice(false);
     setQ("");
     requestAnimationFrame(() => scannerRef.current?.focus());
   };
 
   return (
-    <div className="space-y-6">
+    <div
+      ref={containerRef}
+      className={cn(
+        "space-y-6",
+        isFullscreen &&
+          "fixed inset-0 z-50 flex h-screen flex-col overflow-hidden bg-background p-4 space-y-4"
+      )}
+    >
       <PageHeader
         title={t("pos.title")}
         description={t("pos.subtitle")}
         actions={
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <ScannerStatus status={wedge.status} lastScanned={wedge.lastScanned} />
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => void toggleFullscreen()}
+              title={isFullscreen ? t("pos.exitFullscreen") : t("pos.fullscreen")}
+            >
+              {isFullscreen ? (
+                <Minimize2 className="me-2 h-4 w-4" />
+              ) : (
+                <Maximize2 className="me-2 h-4 w-4" />
+              )}
+              {isFullscreen ? t("pos.exitFullscreen") : t("pos.fullscreen")}
+            </Button>
             <Button asChild variant="outline">
               <Link href="/sales">
                 <ReceiptText className="me-2 h-4 w-4" />
@@ -294,8 +461,18 @@ export default function PosPage() {
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div
+        className={cn(
+          "grid gap-6 lg:grid-cols-3",
+          isFullscreen && "min-h-0 flex-1"
+        )}
+      >
+        <div
+          className={cn(
+            "space-y-6 lg:col-span-2",
+            isFullscreen && "min-h-0 overflow-y-auto pe-1"
+          )}
+        >
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
@@ -527,12 +704,28 @@ export default function PosPage() {
           </Card>
         </div>
 
-        <Card className="lg:col-span-1 lg:self-start">
-          <CardHeader>
+        <Card
+          className={cn(
+            "lg:col-span-1 lg:self-start",
+            isFullscreen && "min-h-0 overflow-y-auto"
+          )}
+        >
+          <CardHeader className="flex flex-row items-center justify-between space-y-0">
             <CardTitle className="flex items-center gap-2 text-base">
               <ShoppingCart className="h-4 w-4" />
               {t("pos.currentSale")}
             </CardTitle>
+            {!lastReceipt && cart.length > 0 ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setClearOpen(true)}
+              >
+                <Eraser className="me-1 h-4 w-4" />
+                {t("pos.clearCart")}
+              </Button>
+            ) : null}
           </CardHeader>
           <CardContent className="space-y-4">
             {lastReceipt ? (
@@ -558,6 +751,8 @@ export default function PosPage() {
                   <InvoicePrintButton
                     sale={lastReceipt.detail as unknown as InvoiceSale}
                     label={t("sales.title")}
+                    autoPrint={autoPrintInvoice}
+                    onPrinted={() => setAutoPrintInvoice(false)}
                   />
                   {/* Optional thermal receipt, independent of A4 printing. */}
                   <ReceiptPrintButton
@@ -631,9 +826,12 @@ export default function PosPage() {
                             >
                               <Minus className="h-3 w-3" />
                             </Button>
-                            <span className="w-8 text-center text-sm tabular-nums">
-                              {line.quantity}
-                            </span>
+                            <QuantityInput
+                              value={line.quantity}
+                              max={Math.max(1, Math.floor(Number(line.product.currentStock) || 0))}
+                              onChange={(next) => setQty(line.product.id, next)}
+                              ariaLabel={`${t("pos.quantity")} — ${line.product.name}`}
+                            />
                             <Button
                               variant="outline"
                               size="icon-sm"
@@ -692,7 +890,7 @@ export default function PosPage() {
                   <Button
                     className="w-full"
                     size="lg"
-                    onClick={checkout}
+                    onClick={openCheckout}
                     disabled={cart.length === 0 || isCheckingOut}
                   >
                     {isCheckingOut ? t("pos.completing") : t("pos.completeSale")}
@@ -703,6 +901,65 @@ export default function PosPage() {
           </CardContent>
         </Card>
       </div>
+
+      <ConfirmDialog
+        open={clearOpen}
+        onOpenChange={setClearOpen}
+        title={t("pos.clearCart")}
+        description={t("pos.clearCartConfirm")}
+        confirmLabel={t("pos.clearCart")}
+        onConfirm={clearCart}
+        destructive
+      />
+
+      <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("pos.printOptionsTitle")}</DialogTitle>
+            <DialogDescription>{t("pos.printOptionsDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border bg-muted/40 p-4 text-center">
+            <p className="text-sm text-muted-foreground">{t("pos.total")}</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums">{formatCurrency(total, currency)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {cart.length} {t("sales.items")}
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Button size="lg" onClick={() => performCheckout("invoice")}>
+              <Printer className="me-2 h-4 w-4" />
+              {t("pos.saveAndPrint")}
+            </Button>
+            <Button size="lg" variant="outline" onClick={() => performCheckout("none")}>
+              {t("pos.saveOnly")}
+            </Button>
+            <Button size="lg" variant="ghost" onClick={() => {
+              setCheckoutOpen(false);
+              setPreviewOpen(true);
+            }}>
+              {t("pos.printPreview")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
+        <DialogContent className="max-h-[90vh] max-w-[min(95vw,820px)] overflow-auto p-4">
+          <DialogHeader>
+            <DialogTitle>{t("pos.printPreview")}</DialogTitle>
+            <DialogDescription>{t("pos.printOptionsDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md border bg-muted/20 p-2">
+            <A4Invoice sale={draftSale} company={companyProfile.data} reprint />
+          </div>
+          <DialogFooter className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={() => setPreviewOpen(false)}>
+              {t("common.back")}
+            </Button>
+            <InvoicePrintButton sale={draftSale} label={t("pos.saveAndPrint")} reprint />
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={customerDialogOpen} onOpenChange={setCustomerDialogOpen}>
         <DialogContent className="sm:max-w-md">

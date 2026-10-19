@@ -3955,9 +3955,18 @@ function awikSaleRouteMatches(string $method, string $path): ?array
     if ($routePath === '/api/v1/sales' && in_array($method, ['GET', 'POST'], true)) {
         return ['kind' => $method === 'GET' ? 'sale-list' : 'sale-create'];
     }
+    if ($routePath === '/api/v1/sales/bulk-delete' && $method === 'POST') {
+        return ['kind' => 'sale-bulk-delete'];
+    }
+    if ($routePath === '/api/v1/sales/clear' && $method === 'POST') {
+        return ['kind' => 'sale-clear'];
+    }
     if (preg_match('~^/api/v1/sales/([^/]+)$~', $routePath, $matches) === 1) {
         if ($method === 'GET') {
             return ['kind' => 'sale-detail', 'id' => rawurldecode($matches[1])];
+        }
+        if ($method === 'DELETE') {
+            return ['kind' => 'sale-delete', 'id' => rawurldecode($matches[1])];
         }
     }
     if (preg_match('~^/api/v1/sales/([^/]+)/(refund|cancel)$~', $routePath, $matches) === 1) {
@@ -3971,6 +3980,56 @@ function awikSaleRouteMatches(string $method, string $path): ?array
 function awikFormatMoney(mixed $value): string
 {
     return number_format((float) $value, 2, '.', '');
+}
+
+function awikBoolean(mixed $value): bool
+{
+    return is_scalar($value) && filter_var($value, FILTER_VALIDATE_BOOLEAN);
+}
+
+/**
+ * Lazily provisions the expenses table. Kept idempotent and local to this
+ * feature so the app can ship without a manual migration on every host.
+ */
+function awikEnsureExpenseTable(PDO $db): void
+{
+    static $ensured = false;
+    if ($ensured) {
+        return;
+    }
+    $db->exec(
+        'CREATE TABLE IF NOT EXISTS `awik_expenses` ('
+        . '`id` CHAR(36) NOT NULL, '
+        . '`category` VARCHAR(120) NOT NULL, '
+        . '`description` VARCHAR(500) NULL, '
+        . '`amount` DECIMAL(14,2) NOT NULL, '
+        . '`currency` VARCHAR(8) NOT NULL DEFAULT \'USD\', '
+        . '`paymentMethod` VARCHAR(40) NULL, '
+        . '`incurredAt` DATETIME NOT NULL, '
+        . '`userId` CHAR(36) NULL, '
+        . '`createdAt` DATETIME NOT NULL, '
+        . '`updatedAt` DATETIME NOT NULL, '
+        . 'PRIMARY KEY (`id`), '
+        . 'KEY `idx_awik_expenses_incurred` (`incurredAt`)'
+        . ') ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci'
+    );
+    $ensured = true;
+}
+
+function awikNormalizeExpenseRow(array $row): array
+{
+    return [
+        'id' => $row['id'] ?? null,
+        'category' => $row['category'] ?? null,
+        'description' => $row['description'] ?? null,
+        'amount' => awikFormatMoney($row['amount'] ?? 0),
+        'currency' => $row['currency'] ?? 'USD',
+        'paymentMethod' => $row['paymentMethod'] ?? null,
+        'incurredAt' => $row['incurredAt'] ?? null,
+        'userId' => $row['userId'] ?? null,
+        'createdAt' => $row['createdAt'] ?? null,
+        'updatedAt' => $row['updatedAt'] ?? null,
+    ];
 }
 
 function awikNormalizeSaleItemRow(array $row): array
@@ -4121,6 +4180,87 @@ function awikHandleSaleRequest(PDO $db, string $method, string $path, array $que
         throw new AwikApiException(403, 'Forbidden');
     }
     $actorId = (string) $user['id'];
+
+    /**
+     * Permanently removes a sale. Stock is returned to inventory only when the
+     * sale is still COMPLETED (a refunded/cancelled sale already had its stock
+     * restored), so inventory never drifts. Returns the removed sale row or
+     * null when the id does not exist.
+     */
+    $awikDeleteSaleById = static function (PDO $db, string $saleId, bool $restoreStock, string $actorId): ?array {
+        $db->beginTransaction();
+        try {
+            $saleStatement = $db->prepare('SELECT * FROM awik_sales WHERE id = ? LIMIT 1 FOR UPDATE');
+            $saleStatement->execute([$saleId]);
+            $sale = $saleStatement->fetch();
+            if (!$sale) {
+                $db->rollBack();
+                return null;
+            }
+            $itemsStatement = $db->prepare('SELECT * FROM awik_sale_items WHERE saleId = ?');
+            $itemsStatement->execute([$saleId]);
+            $items = $itemsStatement->fetchAll();
+
+            if ($restoreStock && ($sale['status'] ?? '') === 'COMPLETED') {
+                foreach ($items as $item) {
+                    $restore = $db->prepare('UPDATE awik_products SET currentStock = currentStock + ?, updatedAt = ' . awikCurrentTimestampSql($db) . ' WHERE id = ? AND deletedAt IS NULL');
+                    $restore->execute([(int) $item['quantity'], $item['productId']]);
+                    if ($restore->rowCount() !== 1) {
+                        continue;
+                    }
+                    $current = $db->prepare('SELECT currentStock FROM awik_products WHERE id = ? LIMIT 1');
+                    $current->execute([$item['productId']]);
+                    $newStock = (int) ($current->fetch()['currentStock'] ?? 0);
+                    $db->prepare(
+                        'INSERT INTO awik_stock_movements (id, productId, userId, movementType, quantity, previousStock, newStock, reference, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+                    )->execute([
+                        awikUuidV4(),
+                        $item['productId'],
+                        $actorId,
+                        'RETURN',
+                        (int) $item['quantity'],
+                        $newStock - (int) $item['quantity'],
+                        $newStock,
+                        'delete-' . ($sale['saleNumber'] ?? $saleId),
+                        'Stock restored from deleted sale ' . ($sale['saleNumber'] ?? $saleId),
+                    ]);
+                }
+            }
+
+            $db->prepare('DELETE FROM awik_sale_items WHERE saleId = ?')->execute([$saleId]);
+            $db->prepare('DELETE FROM awik_sales WHERE id = ?')->execute([$saleId]);
+            $db->commit();
+            return $sale;
+        } catch (Throwable $exception) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            throw $exception;
+        }
+    };
+
+    /**
+     * Best-effort audit trail for destructive sale operations. Never blocks the
+     * operation itself when audit storage is unavailable.
+     */
+    $awikAuditSale = static function (PDO $db, string $actorId, string $action, string $saleId, ?array $snapshot): void {
+        try {
+            $db->prepare(
+                'INSERT INTO awik_audit_logs (id, userId, action, entity, entityId, oldValues, newValues, ipAddress, userAgent, createdAt) '
+                . 'VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ' . awikCurrentTimestampSql($db) . ')'
+            )->execute([
+                awikUuidV4(),
+                $actorId,
+                $action,
+                'Sales',
+                $saleId,
+                $snapshot === null ? null : json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+        } catch (Throwable) {
+            // Audit is best-effort, matching the rest of the application.
+        }
+    };
+
 
     if ($route['kind'] === 'sale-list' && $method === 'GET') {
         $page = max(1, (int) ($query['page'] ?? 1));
@@ -4444,6 +4584,328 @@ function awikHandleSaleRequest(PDO $db, string $method, string $path, array $que
         }
     }
 
+    if ($route['kind'] === 'sale-delete' && $method === 'DELETE') {
+        if (($user['role'] ?? null) !== 'ADMIN') {
+            throw new AwikApiException(403, 'Only administrators can delete sales');
+        }
+        $restoreStock = awikBoolean($query['restoreStock'] ?? null) || awikBoolean($body['restoreStock'] ?? null);
+        $saleId = (string) $route['id'];
+        $deleted = $awikDeleteSaleById($db, $saleId, $restoreStock, $actorId);
+        if ($deleted === null) {
+            throw new AwikApiException(404, 'Sale not found');
+        }
+        $awikAuditSale($db, $actorId, 'DELETE', $saleId, [
+            'saleNumber' => $deleted['saleNumber'] ?? null,
+            'totalAmount' => $deleted['totalAmount'] ?? null,
+            'status' => $deleted['status'] ?? null,
+            'restoreStock' => $restoreStock,
+        ]);
+        return awikResponse(200, ['success' => true, 'data' => [
+            'id' => $saleId,
+            'saleNumber' => $deleted['saleNumber'] ?? null,
+            'restoreStock' => $restoreStock,
+        ]]);
+    }
+
+    if ($route['kind'] === 'sale-bulk-delete' && $method === 'POST') {
+        if (($user['role'] ?? null) !== 'ADMIN') {
+            throw new AwikApiException(403, 'Only administrators can delete sales');
+        }
+        $ids = $body['ids'] ?? null;
+        if (!is_array($ids) || $ids === []) {
+            throw new AwikApiException(400, 'ids must be a non-empty array');
+        }
+        $restoreStock = awikBoolean($body['restoreStock'] ?? null);
+        $deletedIds = [];
+        $skipped = 0;
+        foreach ($ids as $rawId) {
+            if (!is_string($rawId) || trim($rawId) === '') {
+                $skipped++;
+                continue;
+            }
+            $id = trim($rawId);
+            $deleted = $awikDeleteSaleById($db, $id, $restoreStock, $actorId);
+            if ($deleted === null) {
+                $skipped++;
+                continue;
+            }
+            $deletedIds[] = $id;
+            $awikAuditSale($db, $actorId, 'DELETE', $id, [
+                'saleNumber' => $deleted['saleNumber'] ?? null,
+                'totalAmount' => $deleted['totalAmount'] ?? null,
+                'status' => $deleted['status'] ?? null,
+                'restoreStock' => $restoreStock,
+            ]);
+        }
+        return awikResponse(200, ['success' => true, 'data' => [
+            'deletedCount' => count($deletedIds),
+            'deleted' => $deletedIds,
+            'skipped' => $skipped,
+            'restoreStock' => $restoreStock,
+        ]]);
+    }
+
+    if ($route['kind'] === 'sale-clear' && $method === 'POST') {
+        if (($user['role'] ?? null) !== 'ADMIN') {
+            throw new AwikApiException(403, 'Only administrators can clear sales');
+        }
+        if (!awikBoolean($body['confirm'] ?? null)) {
+            throw new AwikApiException(400, 'confirm must be true to clear sales');
+        }
+        $all = awikBoolean($body['all'] ?? null);
+        $dateFrom = is_string($body['dateFrom'] ?? null) && $body['dateFrom'] !== '' ? $body['dateFrom'] : null;
+        $dateTo = is_string($body['dateTo'] ?? null) && $body['dateTo'] !== '' ? $body['dateTo'] : null;
+        $status = is_string($body['status'] ?? null) && $body['status'] !== '' ? $body['status'] : null;
+        $where = [];
+        $params = [];
+        if (!$all) {
+            if ($dateFrom !== null) {
+                $where[] = 'createdAt >= ?';
+                $params[] = $dateFrom;
+            }
+            if ($dateTo !== null) {
+                $where[] = 'createdAt <= ?';
+                $params[] = $dateTo;
+            }
+            if ($status !== null) {
+                $where[] = 'status = ?';
+                $params[] = $status;
+            }
+            if ($where === []) {
+                throw new AwikApiException(400, 'Provide a date range, a status, or all=true');
+            }
+        }
+        $select = $db->prepare('SELECT id FROM awik_sales' . ($where !== [] ? ' WHERE ' . implode(' AND ', $where) : '') . ' LIMIT 5000');
+        $select->execute($params);
+        $ids = $select->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        $restoreStock = awikBoolean($body['restoreStock'] ?? null);
+        $deletedCount = 0;
+        foreach ($ids as $id) {
+            if ($awikDeleteSaleById($db, (string) $id, $restoreStock, $actorId) !== null) {
+                $deletedCount++;
+            }
+        }
+        $awikAuditSale($db, $actorId, 'CLEAR', 'bulk', [
+            'deletedCount' => $deletedCount,
+            'all' => $all,
+            'dateFrom' => $dateFrom,
+            'dateTo' => $dateTo,
+            'status' => $status,
+            'restoreStock' => $restoreStock,
+        ]);
+        return awikResponse(200, ['success' => true, 'data' => [
+            'deletedCount' => $deletedCount,
+            'restoreStock' => $restoreStock,
+        ]]);
+    }
+
+    return awikJsonError(404, 'Not Found', null, $responsePath);
+}
+
+function awikValidateExpenseInput(array $body, bool $requireAll): array
+{
+    $output = [];
+
+    if ($requireAll || array_key_exists('category', $body)) {
+        $category = is_string($body['category'] ?? null) ? trim($body['category']) : '';
+        if ($category === '') {
+            throw new AwikApiException(400, 'category is required');
+        }
+        if (mb_strlen($category) > 120) {
+            throw new AwikApiException(400, 'category is too long');
+        }
+        $output['category'] = $category;
+    }
+
+    if (array_key_exists('description', $body)) {
+        $description = is_string($body['description'] ?? null) ? trim($body['description']) : '';
+        if (mb_strlen($description) > 500) {
+            throw new AwikApiException(400, 'description is too long');
+        }
+        $output['description'] = $description === '' ? null : $description;
+    }
+
+    if (array_key_exists('paymentMethod', $body)) {
+        $paymentMethod = is_string($body['paymentMethod'] ?? null) ? trim($body['paymentMethod']) : '';
+        $output['paymentMethod'] = $paymentMethod === '' ? null : $paymentMethod;
+    }
+
+    if ($requireAll || array_key_exists('amount', $body)) {
+        $amount = $body['amount'] ?? null;
+        if (!is_numeric($amount) || (float) $amount < 0) {
+            throw new AwikApiException(400, 'amount must be a non-negative number');
+        }
+        $output['amount'] = (float) $amount;
+    }
+
+    if ($requireAll || array_key_exists('currency', $body)) {
+        $currency = is_string($body['currency'] ?? null) ? strtoupper(trim($body['currency'])) : 'USD';
+        $output['currency'] = preg_match('/^[A-Z]{3}$/', $currency) === 1 ? $currency : 'USD';
+    }
+
+    if ($requireAll || (array_key_exists('incurredAt', $body) && $body['incurredAt'] !== '' && $body['incurredAt'] !== null)) {
+        $raw = is_string($body['incurredAt'] ?? null) ? $body['incurredAt'] : '';
+        if ($raw === '') {
+            $output['incurredAt'] = (new DateTimeImmutable('now'))->format('Y-m-d H:i:s');
+        } else {
+            try {
+                $output['incurredAt'] = (new DateTimeImmutable($raw))->format('Y-m-d H:i:s');
+            } catch (Throwable) {
+                throw new AwikApiException(400, 'incurredAt is not a valid date');
+            }
+        }
+    }
+
+    return $output;
+}
+
+function awikExpenseRouteMatches(string $method, string $path): ?array
+{
+    $routePath = rtrim($path, '/') ?: '/';
+    if ($routePath === '/api/v1/expenses') {
+        if ($method === 'GET') {
+            return ['kind' => 'expense-list'];
+        }
+        if ($method === 'POST') {
+            return ['kind' => 'expense-create'];
+        }
+    }
+    if (preg_match('~^/api/v1/expenses/([^/]+)$~', $routePath, $matches) === 1) {
+        if ($method === 'PATCH' || $method === 'PUT') {
+            return ['kind' => 'expense-update', 'id' => rawurldecode($matches[1])];
+        }
+        if ($method === 'DELETE') {
+            return ['kind' => 'expense-delete', 'id' => rawurldecode($matches[1])];
+        }
+    }
+    return null;
+}
+
+function awikHandleExpenseRequest(PDO $db, string $method, string $path, array $query, array $body, array $headers, string $responsePath, ?string $ipAddress): ?array
+{
+    $route = awikExpenseRouteMatches($method, $path);
+    if ($route === null) {
+        return null;
+    }
+
+    $user = awikRequireAuthenticatedUser($db, $headers);
+    if (($user['role'] ?? null) !== 'ADMIN') {
+        throw new AwikApiException(403, 'Only administrators can manage expenses');
+    }
+    awikEnsureExpenseTable($db);
+    $actorId = (string) $user['id'];
+
+    if ($route['kind'] === 'expense-list' && $method === 'GET') {
+        $page = max(1, (int) ($query['page'] ?? 1));
+        $limit = min(100, max(1, (int) ($query['limit'] ?? 50)));
+        $where = [];
+        $params = [];
+        if (!empty($query['category'])) {
+            $where[] = 'category = ?';
+            $params[] = $query['category'];
+        }
+        if (!empty($query['dateFrom'])) {
+            $where[] = 'incurredAt >= ?';
+            $params[] = $query['dateFrom'];
+        }
+        if (!empty($query['dateTo'])) {
+            $where[] = 'incurredAt <= ?';
+            $params[] = $query['dateTo'];
+        }
+        if (!empty($query['search'])) {
+            $where[] = '(description LIKE ? OR category LIKE ?)';
+            $needle = '%' . (string) $query['search'] . '%';
+            $params[] = $needle;
+            $params[] = $needle;
+        }
+        $whereSql = $where !== [] ? ' WHERE ' . implode(' AND ', $where) : '';
+        $count = $db->prepare('SELECT COUNT(*) FROM awik_expenses' . $whereSql);
+        $count->execute($params);
+        $total = (int) $count->fetchColumn();
+        $statement = $db->prepare('SELECT * FROM awik_expenses' . $whereSql . ' ORDER BY incurredAt DESC, createdAt DESC LIMIT ? OFFSET ?');
+        $index = 1;
+        foreach ($params as $parameter) {
+            $statement->bindValue($index++, $parameter);
+        }
+        $statement->bindValue($index++, $limit, PDO::PARAM_INT);
+        $statement->bindValue($index, ($page - 1) * $limit, PDO::PARAM_INT);
+        $statement->execute();
+        $rows = array_map('awikNormalizeExpenseRow', $statement->fetchAll());
+        $sum = $db->prepare('SELECT COALESCE(SUM(amount), 0) FROM awik_expenses' . $whereSql);
+        $sum->execute($params);
+        return awikResponse(200, ['success' => true, 'data' => [
+            'data' => $rows,
+            'total' => $total,
+            'page' => $page,
+            'limit' => $limit,
+            'totalAmount' => (float) $sum->fetchColumn(),
+        ]]);
+    }
+
+    if ($route['kind'] === 'expense-create' && $method === 'POST') {
+        $input = awikValidateExpenseInput($body, true);
+        $id = awikUuidV4();
+        $now = awikCurrentTimestampSql($db);
+        $db->prepare(
+            'INSERT INTO awik_expenses (id, category, description, amount, currency, paymentMethod, incurredAt, userId, createdAt, updatedAt) '
+            . 'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ' . $now . ', ' . $now . ')'
+        )->execute([
+            $id,
+            $input['category'],
+            $input['description'],
+            number_format((float) $input['amount'], 2, '.', ''),
+            $input['currency'],
+            $input['paymentMethod'],
+            $input['incurredAt'],
+            $actorId,
+        ]);
+        $created = $db->prepare('SELECT * FROM awik_expenses WHERE id = ? LIMIT 1');
+        $created->execute([$id]);
+        return awikResponse(201, ['success' => true, 'data' => awikNormalizeExpenseRow($created->fetch())]);
+    }
+
+    if ($route['kind'] === 'expense-update' && ($method === 'PATCH' || $method === 'PUT')) {
+        $id = (string) $route['id'];
+        $existing = $db->prepare('SELECT * FROM awik_expenses WHERE id = ? LIMIT 1');
+        $existing->execute([$id]);
+        $current = $existing->fetch();
+        if (!$current) {
+            throw new AwikApiException(404, 'Expense not found');
+        }
+        $input = awikValidateExpenseInput($body, false);
+        $fields = [];
+        $params = [];
+        foreach (['category', 'description', 'paymentMethod', 'currency', 'incurredAt'] as $column) {
+            if (array_key_exists($column, $input)) {
+                $fields[] = $column . ' = ?';
+                $params[] = $input[$column];
+            }
+        }
+        if (array_key_exists('amount', $input)) {
+            $fields[] = 'amount = ?';
+            $params[] = number_format((float) $input['amount'], 2, '.', '');
+        }
+        if ($fields === []) {
+            throw new AwikApiException(400, 'No updatable fields were provided');
+        }
+        $fields[] = 'updatedAt = ' . awikCurrentTimestampSql($db);
+        $params[] = $id;
+        $db->prepare('UPDATE awik_expenses SET ' . implode(', ', $fields) . ' WHERE id = ?')->execute($params);
+        $updated = $db->prepare('SELECT * FROM awik_expenses WHERE id = ? LIMIT 1');
+        $updated->execute([$id]);
+        return awikResponse(200, ['success' => true, 'data' => awikNormalizeExpenseRow($updated->fetch())]);
+    }
+
+    if ($route['kind'] === 'expense-delete' && $method === 'DELETE') {
+        $id = (string) $route['id'];
+        $delete = $db->prepare('DELETE FROM awik_expenses WHERE id = ?');
+        $delete->execute([$id]);
+        if ($delete->rowCount() !== 1) {
+            throw new AwikApiException(404, 'Expense not found');
+        }
+        return awikResponse(200, ['success' => true, 'data' => ['id' => $id]]);
+    }
+
     return awikJsonError(404, 'Not Found', null, $responsePath);
 }
 
@@ -4548,7 +5010,7 @@ function awikValidateReportQuery(array $query): array
 
 function awikReportUsesDateRange(string $report): bool
 {
-    return in_array($report, ['revenue', 'sales', 'stock-movements', 'whatsapp'], true);
+    return in_array($report, ['revenue', 'sales', 'stock-movements', 'whatsapp', 'profit'], true);
 }
 
 function awikReportLocalRowLimit(string $report): ?int
@@ -4601,6 +5063,7 @@ function awikReportCsvProjection(string $report, mixed $data): array
         'inventory' => ['Category', 'Item Count', 'Total Stock', 'Value'],
         'stock-movements' => ['Product', 'Type', 'Quantity', 'Prev', 'New', 'User', 'Date'],
         'whatsapp' => ['Phone', 'Status', 'Template', 'Date'],
+        'profit' => ['Category', 'Total', 'Count'],
     ];
     if (!isset($headers[$report])) {
         throw new AwikApiException(400, 'Unsupported report type');
@@ -4645,6 +5108,19 @@ function awikReportCsvProjection(string $report, mixed $data): array
                     $row['status'] ?? '',
                     $row['totalAmount'] ?? '',
                     awikReportCsvDate($row['createdAt'] ?? null),
+                ];
+            }
+            break;
+        case 'profit':
+            $records = is_array($data) ? ($data['byCategory'] ?? []) : [];
+            foreach ($asRows($records) as $row) {
+                if (!is_array($row)) {
+                    continue;
+                }
+                $rows[] = [
+                    $row['category'] ?? '',
+                    $row['total'] ?? '',
+                    $row['count'] ?? '',
                 ];
             }
             break;
@@ -4756,6 +5232,7 @@ function awikReportTitle(string $report): string
         'inventory' => 'Inventory Report',
         'stock-movements' => 'Stock Movements Report',
         'whatsapp' => 'WhatsApp Report',
+        'profit' => 'Profit Report',
         default => throw new AwikApiException(400, 'Unsupported report type'),
     };
 }
@@ -4801,6 +5278,13 @@ function awikReportSummaryLines(string $report, mixed $data): array
             'Rate: ' . (($summary['deliveryRate'] ?? null) === null
                 ? '-'
                 : number_format((float) $summary['deliveryRate'] * 100, 1, '.', '') . '%'),
+        ],
+        'profit' => [
+            'Revenue: ' . $money($summary['revenue'] ?? 0),
+            'Cost of Goods: ' . $money($summary['cogs'] ?? 0),
+            'Gross Profit: ' . $money($summary['grossProfit'] ?? 0),
+            'Expenses: ' . $money($summary['expenses'] ?? 0),
+            'Net Profit: ' . $money($summary['netProfit'] ?? 0),
         ],
         default => throw new AwikApiException(400, 'Unsupported report type'),
     };
@@ -5133,7 +5617,7 @@ function awikReportRouteMatches(string $method, string $path): ?array
     }
 
     $reportName = rawurldecode($matches[1]);
-    $allowed = ['revenue', 'sales', 'customers', 'subscriptions', 'inventory', 'stock-movements', 'whatsapp'];
+    $allowed = ['revenue', 'sales', 'customers', 'subscriptions', 'inventory', 'stock-movements', 'whatsapp', 'profit'];
     if (!in_array($reportName, $allowed, true)) {
         return null;
     }
@@ -5267,7 +5751,7 @@ function awikHandleReportRequest(PDO $db, string $method, string $path, array $q
 
     $user = awikRequireAuthenticatedUser($db, $headers);
     $report = $route['kind'];
-    $adminOnly = in_array($report, ['revenue', 'subscriptions', 'whatsapp'], true);
+    $adminOnly = in_array($report, ['revenue', 'subscriptions', 'whatsapp', 'profit'], true);
     if ($adminOnly && ($user['role'] ?? null) !== 'ADMIN') {
         throw new AwikApiException(403, 'Forbidden');
     }
@@ -5280,13 +5764,16 @@ function awikHandleReportRequest(PDO $db, string $method, string $path, array $q
     $dateFrom = $range['dateFrom'];
     $dateTo = $range['dateTo'];
     $whereSql = '';
+    $whereSqlS = '';
     $params = [];
     if (awikReportUsesDateRange($report) && $dateFrom !== null) {
         $whereSql .= ' AND createdAt >= ?';
+        $whereSqlS .= ' AND s.createdAt >= ?';
         $params[] = $dateFrom;
     }
     if (awikReportUsesDateRange($report) && $dateTo !== null) {
         $whereSql .= ' AND createdAt <= ?';
+        $whereSqlS .= ' AND s.createdAt <= ?';
         $params[] = $dateTo;
     }
     $responseFor = static fn (array $data): array => awikReportResponse($route, $query, $data);
@@ -5299,9 +5786,42 @@ function awikHandleReportRequest(PDO $db, string $method, string $path, array $q
             $summary = $statement->fetch();
             $methods = $db->prepare('SELECT paymentMethod AS method, COALESCE(SUM(totalAmount), 0) AS total, COUNT(*) AS count FROM awik_sales WHERE status = ?' . $whereSql . ' GROUP BY paymentMethod ORDER BY total DESC');
             $methods->execute(array_merge(['COMPLETED'], $params));
+            // Cost of goods sold across the same completed sales, for profit reporting.
+            $cogsStatement = $db->prepare(
+                'SELECT COALESCE(SUM(si.quantity * p.purchasePrice), 0) AS totalCost '
+                . 'FROM awik_sale_items si '
+                . 'JOIN awik_sales s ON s.id = si.saleId '
+                . 'JOIN awik_products p ON p.id = si.productId '
+                . 'WHERE s.status = ?' . $whereSqlS
+            );
+            $cogsStatement->execute(array_merge(['COMPLETED'], $params));
+            $totalCost = (float) ($cogsStatement->fetch()['totalCost'] ?? 0);
+            $totalRevenue = (float) ($summary['totalRevenue'] ?? 0);
+            // Monthly breakdown for the report chart.
+            $monthlyStatement = $db->prepare(
+                'SELECT DATE_FORMAT(createdAt, "%Y-%m") AS month, '
+                . 'COALESCE(SUM(totalAmount), 0) AS revenue, COUNT(*) AS salesCount '
+                . 'FROM awik_sales WHERE status = ?' . $whereSql
+                . ' GROUP BY month ORDER BY month ASC'
+            );
+            $monthlyStatement->execute(array_merge(['COMPLETED'], $params));
+            $monthly = [];
+            foreach ($monthlyStatement->fetchAll() as $monthRow) {
+                $monthly[] = [
+                    'month' => $monthRow['month'],
+                    'revenue' => (float) $monthRow['revenue'],
+                    'salesCount' => (int) $monthRow['salesCount'],
+                ];
+            }
             $data = [
-                'summary' => ['totalRevenue' => (float) ($summary['totalRevenue'] ?? 0), 'totalPayments' => (int) ($summary['totalPayments'] ?? 0)],
+                'summary' => [
+                    'totalRevenue' => $totalRevenue,
+                    'totalPayments' => (int) ($summary['totalPayments'] ?? 0),
+                    'totalCost' => $totalCost,
+                    'grossProfit' => $totalRevenue - $totalCost,
+                ],
                 'byMethod' => $methods->fetchAll(),
+                'monthly' => $monthly,
                 'payments' => [],
             ];
             if ($route['download']) {
@@ -5321,6 +5841,64 @@ function awikHandleReportRequest(PDO $db, string $method, string $path, array $q
                 ));
                 $data['sales'] = $sales->fetchAll();
             }
+            return $responseFor($data);
+
+        case 'profit':
+            awikEnsureExpenseTable($db);
+            $revenueStatement = $db->prepare("SELECT COALESCE(SUM(totalAmount), 0) AS revenue, COUNT(*) AS salesCount FROM awik_sales WHERE status = 'COMPLETED'" . $whereSql);
+            $revenueStatement->execute($params);
+            $revenueRow = $revenueStatement->fetch();
+            $revenue = (float) ($revenueRow['revenue'] ?? 0);
+            $salesCount = (int) ($revenueRow['salesCount'] ?? 0);
+
+            $cogsStatement = $db->prepare(
+                'SELECT COALESCE(SUM(si.quantity * p.purchasePrice), 0) AS cogs '
+                . 'FROM awik_sale_items si '
+                . 'JOIN awik_sales s ON s.id = si.saleId '
+                . 'JOIN awik_products p ON p.id = si.productId '
+                . "WHERE s.status = 'COMPLETED'" . $whereSqlS
+            );
+            $cogsStatement->execute($params);
+            $cogs = (float) ($cogsStatement->fetch()['cogs'] ?? 0);
+
+            $expenseWhere = '';
+            $expenseParams = [];
+            if ($dateFrom !== null) {
+                $expenseWhere .= ' AND incurredAt >= ?';
+                $expenseParams[] = $dateFrom;
+            }
+            if ($dateTo !== null) {
+                $expenseWhere .= ' AND incurredAt <= ?';
+                $expenseParams[] = $dateTo;
+            }
+            $expenseTotalStatement = $db->prepare('SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS count FROM awik_expenses WHERE 1 = 1' . $expenseWhere);
+            $expenseTotalStatement->execute($expenseParams);
+            $expenseRow = $expenseTotalStatement->fetch();
+            $expenses = (float) ($expenseRow['total'] ?? 0);
+
+            $categoryStatement = $db->prepare(
+                'SELECT category, COALESCE(SUM(amount), 0) AS total, COUNT(*) AS count '
+                . 'FROM awik_expenses WHERE 1 = 1' . $expenseWhere
+                . ' GROUP BY category ORDER BY total DESC'
+            );
+            $categoryStatement->execute($expenseParams);
+            $byCategory = $categoryStatement->fetchAll();
+
+            $grossProfit = $revenue - $cogs;
+            $netProfit = $grossProfit - $expenses;
+            $data = [
+                'summary' => [
+                    'revenue' => $revenue,
+                    'cogs' => $cogs,
+                    'grossProfit' => $grossProfit,
+                    'expenses' => $expenses,
+                    'netProfit' => $netProfit,
+                    'margin' => $revenue > 0 ? round(($grossProfit / $revenue) * 100, 2) : 0,
+                    'netMargin' => $revenue > 0 ? round(($netProfit / $revenue) * 100, 2) : 0,
+                    'salesCount' => $salesCount,
+                ],
+                'byCategory' => $byCategory,
+            ];
             return $responseFor($data);
 
         case 'sales':
@@ -6770,6 +7348,12 @@ function awikHandleRequest(array $request): array
         if ($saleResponse !== null) {
             return $saleResponse;
         }
+
+        $expenseResponse = awikHandleExpenseRequest($db, $method, $path, $query, $body, $headers, $responsePath, $ipAddress);
+        if ($expenseResponse !== null) {
+            return $expenseResponse;
+        }
+
 
         $subscriptionResponse = awikHandleSubscriptionRequest($db, $method, $path, $query, $body, $headers, $responsePath, $ipAddress);
         if ($subscriptionResponse !== null) {

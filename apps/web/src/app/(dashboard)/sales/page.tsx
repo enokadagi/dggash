@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { DateRange } from "react-day-picker";
-import { useSales, useCancelSale, useRefundSale, type Sale } from "@/hooks/api/use-sales";
+import { useSales, useCancelSale, useRefundSale, useDeleteSale, useBulkDeleteSales, useClearSales, type Sale } from "@/hooks/api/use-sales";
 import { usePagination } from "@/hooks/use-pagination";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useLocalization } from "@/hooks/use-localization";
@@ -24,6 +24,14 @@ import {
 } from "@/components/ui/select";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatCurrency, formatDateTime } from "@/lib/utils";
 import {
   Plus,
@@ -35,9 +43,18 @@ import {
   RotateCcw,
   XCircle,
   Wallet,
+  Trash2,
+  Printer,
 } from "lucide-react";
 
 const PAYMENT_METHODS = ["cash", "card", "bank_transfer", "credit", "other"] as const;
+
+/** Extends a picked day to its last millisecond so the end date is inclusive. */
+function endOfDay(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(23, 59, 59, 999);
+  return d;
+}
 
 export default function SalesPage() {
   const router = useRouter();
@@ -58,7 +75,7 @@ export default function SalesPage() {
     status: status || undefined,
     paymentMethod: paymentMethod || undefined,
     dateFrom: dateRange?.from ? dateRange.from.toISOString() : undefined,
-    dateTo: dateRange?.to ? dateRange.to.toISOString() : undefined,
+    dateTo: dateRange?.to ? endOfDay(dateRange.to).toISOString() : undefined,
   });
 
   const sales = data?.data || [];
@@ -67,12 +84,25 @@ export default function SalesPage() {
   const currency = sales[0]?.currency || "USD";
 
   const [action, setAction] = React.useState<{ type: "cancel" | "refund"; sale: Sale } | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<Sale | null>(null);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = React.useState(false);
+  const [clearOpen, setClearOpen] = React.useState(false);
+  const [selectedSales, setSelectedSales] = React.useState<Sale[]>([]);
 
   const cancelMutation = useCancelSale();
   const refundMutation = useRefundSale();
+  const deleteMutation = useDeleteSale();
+  const bulkDeleteMutation = useBulkDeleteSales();
+  const clearMutation = useClearSales();
 
-  const pageRevenue = sales.reduce((sum, s) => sum + Number(s.totalAmount), 0);
-  const pageProfit = sales.reduce((sum, s) => sum + Number(s.profit ?? 0), 0);
+  const pageRevenue = sales.reduce((sum, s) => {
+    const amount = Number(s.totalAmount);
+    return sum + (Number.isFinite(amount) ? amount : 0);
+  }, 0);
+  const pageProfit = sales.reduce((sum, s) => {
+    const profit = Number(s.profit ?? 0);
+    return sum + (Number.isFinite(profit) ? profit : 0);
+  }, 0);
   const completedCount = sales.filter((s) => s.status === "COMPLETED").length;
   const margin = pageRevenue > 0 ? (pageProfit / pageRevenue) * 100 : 0;
 
@@ -81,6 +111,36 @@ export default function SalesPage() {
     if (action.type === "cancel") cancelMutation.mutate({ id: action.sale.id });
     else refundMutation.mutate({ id: action.sale.id });
     setAction(null);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (!deleteTarget) return;
+    deleteMutation.mutate({ id: deleteTarget.id, restoreStock: true });
+    setDeleteTarget(null);
+  };
+
+  const handleBulkDeleteConfirm = () => {
+    const ids = selectedSales.map((s) => s.id);
+    if (ids.length === 0) return;
+    bulkDeleteMutation.mutate(
+      { ids, restoreStock: true },
+      { onSettled: () => setSelectedSales([]) }
+    );
+    setBulkDeleteOpen(false);
+  };
+
+  const handleClear = (scope: "all" | "filtered") => {
+    const input =
+      scope === "all"
+        ? { all: true, restoreStock: true }
+        : {
+            restoreStock: true,
+            ...(dateRange?.from ? { dateFrom: dateRange.from.toISOString() } : {}),
+            ...(dateRange?.to ? { dateTo: endOfDay(dateRange.to).toISOString() } : {}),
+            ...(status ? { status } : {}),
+          };
+    clearMutation.mutate(input, { onSettled: () => setSelectedSales([]) });
+    setClearOpen(false);
   };
 
   const resetFilters = () => {
@@ -122,13 +182,14 @@ export default function SalesPage() {
       accessorKey: "products",
       header: t("sales.products"),
       cell: ({ row }) => {
-        const names = row.original.items
+        const items = row.original.items ?? [];
+        const names = items
           .map((i) => i.product?.name)
           .filter((n): n is string => !!n);
         if (names.length === 0) {
           return (
             <span className="tabular-nums">
-              {row.original.items.reduce((sum, i) => sum + i.quantity, 0)} {t("sales.qty")}
+              {items.reduce((sum, i) => sum + Number(i.quantity || 0), 0)} {t("sales.qty")}
             </span>
           );
         }
@@ -146,7 +207,7 @@ export default function SalesPage() {
       accessorKey: "paymentMethod",
       header: t("sales.payment"),
       cell: ({ row }) => (
-        <span className="capitalize">{row.original.paymentMethod.replace(/_/g, " ")}</span>
+        <span className="capitalize">{(row.original.paymentMethod || "—").replace(/_/g, " ")}</span>
       ),
     },
     {
@@ -202,12 +263,20 @@ export default function SalesPage() {
         title={t("sales.history")}
         description={t("sales.title")}
         actions={
-          <Button asChild>
-            <Link href="/sales/pos">
-              <Plus className="me-2 h-4 w-4" />
-              {t("sales.openPos")}
-            </Link>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {isAdmin ? (
+              <Button variant="outline" onClick={() => setClearOpen(true)}>
+                <Trash2 className="me-2 h-4 w-4" />
+                {t("sales.clearSales")}
+              </Button>
+            ) : null}
+            <Button asChild>
+              <Link href="/sales/pos">
+                <Plus className="me-2 h-4 w-4" />
+                {t("sales.openPos")}
+              </Link>
+            </Button>
+          </div>
         }
       />
 
@@ -295,9 +364,32 @@ export default function SalesPage() {
         </CardContent>
       </Card>
 
+      {isAdmin && selectedSales.length > 0 ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-4 py-3">
+          <p className="text-sm font-medium">
+            {t("sales.selectedCount", { count: selectedSales.length })}
+          </p>
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setSelectedSales([])}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => setBulkDeleteOpen(true)}
+            >
+              <Trash2 className="me-2 h-4 w-4" />
+              {t("sales.bulkDelete", { count: selectedSales.length })}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+
       <DataTable
         columns={columns}
         data={sales}
+        enableSelection={isAdmin}
+        onSelectionChange={setSelectedSales}
         searchPlaceholder={t("sales.searchPlaceholder")}
         onSearch={(v) => {
           setSearch(v);
@@ -319,6 +411,11 @@ export default function SalesPage() {
               onClick: () => router.push(`/sales/detail?id=${encodeURIComponent(row.id)}`),
               icon: <Eye className="h-4 w-4" />,
             },
+            {
+              label: t("sales.reprint"),
+              onClick: () => router.push(`/sales/invoice?id=${encodeURIComponent(row.id)}`),
+              icon: <Printer className="h-4 w-4" />,
+            },
           ];
           if (row.status === "COMPLETED") {
             actions.push({
@@ -330,6 +427,14 @@ export default function SalesPage() {
               label: t("sales.cancelAction"),
               onClick: () => setAction({ type: "cancel", sale: row }),
               icon: <XCircle className="h-4 w-4" />,
+              destructive: true,
+            });
+          }
+          if (isAdmin) {
+            actions.push({
+              label: t("sales.deleteAction"),
+              onClick: () => setDeleteTarget(row),
+              icon: <Trash2 className="h-4 w-4" />,
               destructive: true,
             });
           }
@@ -354,6 +459,65 @@ export default function SalesPage() {
         onConfirm={handleActionConfirm}
         destructive={action?.type === "cancel"}
       />
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onOpenChange={(open) => !open && setDeleteTarget(null)}
+        title={t("sales.deleteSale")}
+        description={
+          deleteTarget
+            ? t("sales.deleteConfirm", {
+                sale: deleteTarget.saleNumber,
+                amount: formatCurrency(Number(deleteTarget.totalAmount), deleteTarget.currency),
+              })
+            : ""
+        }
+        confirmLabel={t("sales.confirmDelete")}
+        onConfirm={handleDeleteConfirm}
+        destructive
+      />
+
+      <ConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title={t("sales.bulkDeleteTitle", { count: selectedSales.length })}
+        description={t("sales.bulkDeleteConfirm", { count: selectedSales.length })}
+        confirmLabel={t("sales.confirmDelete")}
+        onConfirm={handleBulkDeleteConfirm}
+        destructive
+      />
+
+      <Dialog open={clearOpen} onOpenChange={setClearOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("sales.clearSalesTitle")}</DialogTitle>
+            <DialogDescription>{t("sales.clearSalesDescription")}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            {hasFilters ? (
+              <Button
+                variant="destructive"
+                onClick={() => handleClear("filtered")}
+                disabled={clearMutation.isPending}
+              >
+                <Trash2 className="me-2 h-4 w-4" />
+                {t("sales.clearFiltered")}
+              </Button>
+            ) : null}
+            <Button
+              variant="destructive"
+              onClick={() => handleClear("all")}
+              disabled={clearMutation.isPending}
+            >
+              <Trash2 className="me-2 h-4 w-4" />
+              {clearMutation.isPending ? t("sales.deleting") : t("sales.clearAll")}
+            </Button>
+            <Button variant="outline" onClick={() => setClearOpen(false)}>
+              {t("common.cancel")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
